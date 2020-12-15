@@ -1,5 +1,6 @@
 # Init variables
-$xmlPath = "C:\Users\ricad\OneDrive\Documents\Scripts\CAPP12\dataset"
+$xmlPath = "\\server\HelloID\HRCoreExport"
+$capp12Path = "C:\HelloID - Ondersteunend\Capp12-testoutput"
 
 function Get-ActiveRecords {
     <#
@@ -50,7 +51,8 @@ function Get-RAETXMLFunctions {
     param(
         [parameter(Mandatory = $true)]$XMLBasePath,
         [parameter(Mandatory = $true)]$FileFilter,
-        [parameter(Mandatory = $true)][ref]$functions
+        [parameter(Mandatory = $true)]$Contracts,
+        [parameter(Mandatory = $true)][ref]$Functions
     )
 
     $files = Get-ChildItem -Path $XMLBasePath -Filter $FileFilter | Sort-Object LastWriteTime -Descending
@@ -67,15 +69,19 @@ function Get-RAETXMLFunctions {
             $function | Add-Member -MemberType NoteProperty -Name $child.LocalName -Value $child.'#text' -Force
         }
 
-        [void]$functions.value.Add($function)
+        [void]$Functions.value.Add($function)
     }
+
+    # Only export functions that exist in contracts
+    $Functions.value = $Functions.value.Where({$_.FunctieCode -in $Contracts.functiecode})
 }
 
 function Get-RAETXMLDepartments {
     param(
         [parameter(Mandatory = $true)]$XMLBasePath,
         [parameter(Mandatory = $true)]$FileFilter,
-        [parameter(Mandatory = $true)][ref]$departments
+        [parameter(Mandatory = $true)]$Contracts,
+        [parameter(Mandatory = $true)][ref]$Departments
     )
 
     $files = Get-ChildItem -Path $XMLBasePath -Filter $FileFilter | Sort-Object LastWriteTime -Descending
@@ -94,12 +100,16 @@ function Get-RAETXMLDepartments {
 
         [void]$departments.value.Add($department)
     }
+
+    # Only export departments that exist in contracts
+    $Departments.value = $Departments.value.Where({$_.orgEenheidID -in $Contracts.orgEenheidOperID})
 }
+
 function Get-RAETXMLManagers {
     param(
         [parameter(Mandatory = $true)]$XMLBasePath,
         [parameter(Mandatory = $true)]$FileFilter,
-        [parameter(Mandatory = $true)][ref]$managers
+        [parameter(Mandatory = $true)][ref]$Managers
     )
 
     $files = Get-ChildItem -Path $XMLBasePath -Filter $FileFilter | Sort-Object LastWriteTime -Descending
@@ -116,14 +126,15 @@ function Get-RAETXMLManagers {
             $manager | Add-Member -MemberType NoteProperty -Name $child.LocalName -Value $child.'#text' -Force
         }
 
-        [void]$managers.value.Add($manager)
+        [void]$Managers.value.Add($manager)
     }
 }
+
 function Get-RAETXMLBAFiles {
     param(
         [parameter(Mandatory = $true)]$XMLBasePath,
-        [parameter(Mandatory = $true)][ref]$persons,
-        [parameter(Mandatory = $true)][ref]$contracts
+        [parameter(Mandatory = $true)][ref]$Persons,
+        [parameter(Mandatory = $true)][ref]$Contracts
     )
 
     # List all files in the selected folder
@@ -138,10 +149,10 @@ function Get-RAETXMLBAFiles {
                 persNr = $werknemer.identificatiePS.persNr;
                 voornamen = $werknemer.kenmerken.naamOverig.roepnaam.waarde;
                 achternaam = ($werknemer.kenmerken.naamOverig.voorvoegselsAanschrijfnaam.waarde + " " + $werknemer.kenmerken.naamOverig.aanschrijfnaam.waarde).trim(" ")
-                email = $werknemer.contactGegevens.werk.emailAdresWerk.waarde;
+                #email = $werknemer.contactGegevens.werk.emailAdresWerk.waarde;
             }
             
-            [void]$persons.value.Add($person)
+            [void]$Persons.value.Add($person)
         }
         foreach ($dienstverband in $xml.GetElementsByTagName("dienstverband")) {
             foreach ($inzet in $dienstverband.GetElementsByTagName("inzet")) {
@@ -154,53 +165,88 @@ function Get-RAETXMLBAFiles {
                     orgEenheidOperID = $inzet.identificatieIZ.orgEenheidOperID;
                     functiecode = $inzet.identificatieIZ.funcOper;
                 }            
-                [void]$contracts.value.Add($position)
+                [void]$Contracts.value.Add($position)
             }
         }
     }
 }
 
-$contracts = New-Object System.Collections.Generic.List[System.Object]
-$persons = New-Object System.Collections.Generic.List[System.Object]
-$managers = New-Object System.Collections.Generic.List[System.Object]
-$functions = New-Object System.Collections.Generic.List[System.Object]
-$departments = New-Object System.Collections.Generic.List[System.Object] 
+function Get-ADAccountData {
+    param(
+        [parameter(Mandatory = $true)][ref]$Persons
+    )
+    
+    # Get list from AD
+    $adUsersWithMail= Get-ADUser -Filter * -Properties EmployeeId, Mail | Where-Object{$_.mail -like "*@*" -and ![string]::IsNullOrEmpty($_.employeeId) }  | Sort-Object EmployeeId -Unique
+    $adUsersWithMailGrouped = $adUsersWithMail| Group-Object -Property EmployeeId -AsHashTable
+    
+    # Add email to persons
+    $persons.value | Add-Member -MemberType NoteProperty -Name "email" -Value $null -Force
+    $persons.value | ForEach-Object  { 
+        $_.email = $adUsersWithMailGrouped[$_.persNr].mail
+    }
 
+    # Remove all persons where email is empty (no ad account)
+    $Persons.value.Where({![string]::IsNullOrEmpty($_.mail)})
+}
+
+# Parsing persons/contracts XML
 Write-Verbose -Verbose "Parsing person/contracts files..."
-Get-RAETXMLBAFiles -XMLBasePath $xmlPath ([ref]$persons) ([ref]$contracts)
+$persons = New-Object System.Collections.Generic.List[System.Object]
+$contracts = New-Object System.Collections.Generic.List[System.Object]
+Get-RAETXMLBAFiles -XMLBasePath $xmlPath -Persons ([ref]$persons) -Contracts ([ref]$contracts)
 Write-Verbose -Verbose "Parsed person/contracts files."
 
-Write-Verbose -Verbose "Employees: parsing input..."
-Set-EmployeeStartEndDate -Contracts $contracts ([ref]$persons)
-Get-ActiveRecords -AttributeStartDate "datum_indienst" -AttributeEndDate "datum_uitdienst" -ActivePreInDays 30 -ActivePostInDays 30 ([ref]$persons)
-$csvEmployees = $persons | Select-Object -Property @{Name = "zoekcode"; Expression = { $_.persNr } }, email, achternaam, voornamen, datum_uitdienst, @{Name = "adfs_login"; Expression = { $_.email } } | Sort-Object zoekcode -unique | ConvertTo-Csv -Delimiter ";" -NoTypeInformation
-$csvEmployees | Out-File -FilePath "$xmlPath\Output\medewerkers.csv" 
 
-Write-Verbose -Verbose "Function assignments / OU assignments: parsing input..."
-Get-ActiveRecords -AttributeStartDate "begindatumIZ" -AttributeEndDate "einddatumIZ" -ActivePreInDays 30 -ActivePostInDays 30 ([ref]$contracts)
+# Employees export
+Write-Verbose -Verbose "Employees: parsing input..."
+Set-EmployeeStartEndDate -Contracts $contracts -Persons ([ref]$persons)
+Get-ActiveRecords -AttributeStartDate "datum_indienst" -AttributeEndDate "datum_uitdienst" -ActivePreInDays 30 -ActivePostInDays 30 -Records ([ref]$persons)
+Get-ADAccountData -Persons ([ref]$persons)
+$csvEmployees = $persons | Select-Object -Property @{Name = "zoekcode"; Expression = { $_.persNr } }, email, achternaam, voornamen, datum_uitdienst, @{Name = "adfs_login"; Expression = { $_.email } } | Sort-Object zoekcode -unique | ConvertTo-Csv -Delimiter ";" -NoTypeInformation
+$csvEmployees | Out-File -FilePath "$capp12Path\medewerkers.csv" 
+Write-Verbose -Verbose "Function & OU assignments: parsing input..."
+
+# filter contracts to use only contracts which have a reference to persons (used in multiple exports below)
+$contracts = $contracts.Where({$_.persNrDV -in $persons.persNr})
+
+# funcion assignment export
+Get-ActiveRecords -AttributeStartDate "begindatumIZ" -AttributeEndDate "einddatumIZ" -ActivePreInDays 30 -ActivePostInDays 30 -Records ([ref]$contracts)
+
 $csvFunctionAssignments = $contracts | Select-Object -Property @{Name = "zoekcode"; Expression = { $_.persNrDV } }, functiecode, @{Name = "datum_uitdienst"; Expression = { $_.einddatumIZ } } | Sort-Object zoekcode, functiecode -unique | ConvertTo-Csv -Delimiter ";" -NoTypeInformation
-$csvFunctionAssignments | Out-File -FilePath "$xmlPath\Output\functietoewijzing.csv"
+$csvFunctionAssignments | Out-File -FilePath "$capp12Path\functietoewijzing.csv"
 Write-Verbose -Verbose "Function assignments: written output csv to disk."
 
+
+# department assignment export
 $csvOuAssignments = $contracts | Select-Object -Property @{Name = "zoekcode"; Expression = { $_.persNrDV } },  @{Name = "werkgeverzoekcode"; Expression = { $_.orgEenheidOperID } }, @{Name = "datum_uitdienst"; Expression = { $_.einddatumIZ } } | Sort-Object zoekcode, werkgeverzoekcode -unique | ConvertTo-Csv -Delimiter ";" -NoTypeInformation
-$csvOuAssignments | Out-File -FilePath "$xmlPath\Output\aanstellingen.csv"
+$csvOuAssignments | Out-File -FilePath "$capp12Path\aanstellingen.csv"
 Write-Verbose -Verbose "OU Assignments: written output csv to disk."
 
+
+# manager export
 Write-Verbose -Verbose "Managers: parsing input xml..."
-Get-RAETXMLManagers -XMLBasePath $xmlPath -FileFilter "Roltoewijzing_*.xml" ([ref]$managers)
-Get-ActiveRecords -AttributeStartDate "begindatum" -AttributeEndDate "einddatum" -ActivePreInDays 30 -ActivePostInDays 30 ([ref]$managers)
+$managers = New-Object System.Collections.Generic.List[System.Object]
+Get-RAETXMLManagers -XMLBasePath $xmlPath -FileFilter "Roltoewijzing_*.xml" -Managers ([ref]$managers)
+Get-ActiveRecords -AttributeStartDate "begindatum" -AttributeEndDate "einddatum" -ActivePreInDays 30 -ActivePostInDays 30 -Records ([ref]$managers)
 $csvManagers = $managers | Where-Object -Property oeRolCode -eq -Value "MGR" | Select-Object -Property @{Name = "zoekcode"; Expression = { $_.persNr } }, @{Name = "contactzoekcode"; Expression = { $_.orgEenheidID } }, @{Name = "datum_uitdienst"; Expression = { $_.einddatum } } | Sort-Object zoekcode, contactzoekcode | ConvertTo-Csv -Delimiter ";" -NoTypeInformation
-$csvManagers | Out-File -FilePath "$xmlPath\Output\leidinggevenden.csv"
+$csvManagers | Out-File -FilePath "$capp12Path\leidinggevenden.csv"
 Write-Verbose -Verbose "Managers: written output csv to disk."
 
+
+# function export
 Write-Verbose -Verbose "Functions: parsing input xml..."
-Get-RAETXMLFunctions -XMLBasePath $xmlPath -FileFilter "rst_functie_*.xml" ([ref]$functions)
+$functions = New-Object System.Collections.Generic.List[System.Object]
+Get-RAETXMLFunctions -XMLBasePath $xmlPath -FileFilter "rst_functie_*.xml"  -Contracts $contracts -Functions ([ref]$functions)
 $csvFunctions = $functions | Select-Object -Property @{Name = "zoekcode"; Expression = { $_.FunctieCode } }, @{Name = "functienaam"; Expression = { $_.functieOmschrijving } } | Sort-Object zoekcode -Unique | ConvertTo-Csv -Delimiter ";" -NoTypeInformation
-$csvFunctions | Out-File -FilePath "$xmlPath\Output\functies.csv"
+$csvFunctions | Out-File -FilePath "$capp12Path\functies.csv"
 Write-Verbose -Verbose "Functions: written output csv to disk."
 
+
+# department export
 Write-Verbose -Verbose "Departments: parsing input xml ..."
-Get-RAETXMLDepartments -XMLBasePath $xmlPath -FileFilter "rst_orgeenheid_*.xml" ([ref]$departments)
+$departments = New-Object System.Collections.Generic.List[System.Object] 
+Get-RAETXMLDepartments -XMLBasePath $xmlPath -FileFilter "rst_orgeenheid_*.xml" -Contracts $contracts -Departments ([ref]$departments)
 $csvDepartments = $departments | Select-Object -Property @{Name = "werkgeverzoekcode"; Expression = { $_.orgEenheidID } }, @{Name = "werkgevernaam"; Expression = { $_.naamLang } } | Sort-Object werkgeverzoekcode -Unique | ConvertTo-Csv -Delimiter ";" -NoTypeInformation
-$csvDepartments | Out-File -FilePath "$xmlPath\Output\afdelingen.csv"
+$csvDepartments | Out-File -FilePath "$capp12Path\afdelingen.csv"
 Write-Verbose -Verbose "Departments: writting output csv."
