@@ -1,0 +1,45 @@
+[
+  {
+    "key": "baseurl",
+    "type": "input",
+    "defaultValue": "https://defacto.capp12.nl",
+    "templateOptions": {
+      "label": "Capp12 API Baseurl",
+      "placeholder": "Capp12 API Baseurl",
+      "description": "BaseURL",
+      "required": true
+    }
+  },
+  {
+    "key": "clientid",
+    "type": "input",
+    "defaultValue": "",
+    "templateOptions": {
+      "label": "Capp12 clientID",
+      "type": "email",
+      "placeholder": "Please enter a ClientID",
+      "required": true
+    }
+  },
+  {
+    "key": "clientsecret",
+    "type": "input",
+    "defaultValue": "",
+    "templateOptions": {
+      "label": "Capp12 clientSecret",
+      "type": "password",
+      "placeholder": "Please enter a clientsecret",
+      "required": true
+    }
+  },
+  {
+    "key": "isDebug",
+    "type": "checkbox",
+    "defaultValue": false,
+    "templateOptions": {
+      "label": "Toggle debug logging",
+      "description": "When toggled, debug logging will be displayed",
+      "required": false
+    }
+  }
+]
