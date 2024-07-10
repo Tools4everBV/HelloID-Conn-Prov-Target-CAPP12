@@ -124,8 +124,8 @@ CAPP12 supports multiple positions and employments assigned to a single account.
 - The Create.ps1 assumes that both Position and Employment are mandatory. Therefore, if the assignment of Positions or employments fails, the Create operation ends in an Error.
 - Positions and employments are calculated based on the contracts in conditions.
 - Assigned positions and employments are saved in the account data in _extension object.
-- Positions and employments are disabled after a previous assigned contract runs out of scope.
-- To enable a position or department, the `ends_on` property is now populated with `null`. It may be necessary to provide a value! During development, verifying the outcome was impossible, meaning a date in the far future might be added to enable an account.
+- Positions and employments are disabled after a previously assigned contract runs out of scope.
+- The `ends_on` property is now populated with `null` to enable a position or department. It may be necessary to provide a value! During development, verifying the outcome was impossible, meaning a date in the far future might be added to enable an account.
  - To manage the HelloID values used for assigning positions and employments, custom script properties in the Create and Update scripts handle the mapping.
   ```Powershell
   # Script Properties
@@ -155,10 +155,10 @@ The resource script Position uses `Title` object as input, and uses the `Externa
 
 
 ##### Department manager assignments
-The resource script for assigning managers to departments uses the `Custom` object as input, and uses the `CAPP12Department` and `CAPP12Manager` fields to assign managers to departments.
-- The department manager assignments require Custom fields in the source mapping, with the Department and the Manager combined. In our example, we created two Custom contract fields:`CAPP12Department`, `CAPP12Manager`.
+The resource script for assigning managers to departments uses the `Custom` object as input and the `CAPP12Department` and `CAPP12Manager` fields to assign managers to departments.
+- The department manager assignments require Custom fields in the source mapping, with the Department and the Manager combined. In our example, we created two Custom contract fields:`CAPP12Department`, and `CAPP12Manager`.
   [More about Custom Fields](https://docs.helloid.com/en/provisioning/persons/person-schema/add-a-custom-person-or-contract-field.html)
-- Both fields should be mapped in the Source mapping with the managers and the departments.
+- Both fields should be mapped with the managers and departments in the Source mapping.
 
   ![alt text](assets/resouceConfiguration.png)
 
@@ -168,18 +168,13 @@ The resource script for assigning managers to departments uses the `Custom` obje
 > [!IMPORTANT]
 The mapping in the custom properties `CAPP12Department` and `CAPP12Manager` should correspond to the properties used for the Department in the resource script and the externalId of the accounts in CAPP12.
 
-
-## Setup the connector
-
-> _How to setup the connector in HelloID._ Are special settings required. Like the _primary manager_ settings for a source connector.
-
 ## Getting help
 
 > [!TIP]
 > _For more information on how to configure a HelloID PowerShell connector, please refer to our [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems.html) pages_.
 
 > [!TIP]
->  _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com)_.
+>  _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com/forum/helloid-connectors/provisioning/5148-helloid-conn-prov-target-capp12)_.
 
 ## HelloID docs
 
