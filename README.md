@@ -50,7 +50,6 @@ The following lifecycle actions are available:
 | Action                                    | Description                             |
 | ----------------------------------------- | --------------------------------------- |
 | create.ps1                                | PowerShell _create_ lifecycle action    |
-| delete.ps1                                | PowerShell _delete_ lifecycle action    |
 | disable.ps1                               | PowerShell _disable_ lifecycle action   |
 | enable.ps1                                | PowerShell _enable_ lifecycle action    |
 | update.ps1                                | PowerShell _update_ lifecycle action    |
@@ -132,6 +131,10 @@ CAPP12 supports multiple positions and employments assigned to a single account.
   $departmentLookupValue = { $_.Department.ExternalId }  # Employments
   $positionLookupValue = { $_.Title.ExternalId }   # Assignments
   ```
+
+#### Delete account is not supported
+
+The CAPP12 API does not support delete actions. This means that you will not be able to delete accounts.
 
 #### Resource Script
 CAPP12 works with positions and departments that match names from HR. Therefore, the connector creates positions and departments in the resource script. There are three types of resource scripts recommended for a comprehensive implementation:
