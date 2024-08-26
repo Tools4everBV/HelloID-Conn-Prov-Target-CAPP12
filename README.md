@@ -111,6 +111,7 @@ The following settings are required to connect to the API.
 There are no GET calls available in the CAPP12 API, so the connector has some differences compared to a default HelloID Connector.
 - To compare the previous account properties, the Departments, and the Positions, the 'STORE IN ACCOUNT DATA' option in HelloID is used to save all the applied values. Additionally, an extra mapping named _extension is introduced.
 - The _extension object contains two types of properties. One property, named SystemGuid, is used to look up the system in the account life cycle. The Positions and Departments properties are used to track assigned positions and departments.
+  - The `SystemGuid` must be unique in you HelloID environment!
 - All API actions are PUT-based.
 - The ends_on property is added to the fieldMapping to make sure the end date is saved during the account life cycle. The mapping should be `None`.
 
@@ -178,6 +179,11 @@ The mapping in the custom properties `CAPP12Department` and `CAPP12Manager` shou
 
 > [!TIP]
 >  _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com/forum/helloid-connectors/provisioning/5148-helloid-conn-prov-target-capp12)_.
+
+> [!TIP]
+> _Supplier API documentation [HR Import API Postman Documenter ](https://documenter.getpostman.com/view/17909805/UV5f6tSy#71de059f-e82f-4ce0-868c-b8d4673e53ea)_
+
+
 
 ## HelloID docs
 

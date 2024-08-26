@@ -124,7 +124,7 @@
     },
     {
       "Name": "_extension.SystemGuid",
-      "Description": "",
+      "Description": "Note: Changing the SystemGuid after initial implementation will cause the connector to fail during updates.",
       "Type": "Text",
       "MappingActions": [
         {
