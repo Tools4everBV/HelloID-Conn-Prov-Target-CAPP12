@@ -5,7 +5,7 @@
 > This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.
 
 <p align="center">
-  <img src="">
+  <img src="https://github.com/Tools4everBV/HelloID-Conn-Prov-Target-CAPP12/blob/main/Logo.png?raw=true">
 </p>
 
 ## Table of contents
@@ -22,11 +22,11 @@
     - [Remarks](#remarks)
       - [No Get Calls available](#no-get-calls-available)
       - [Assigning Position and Employment](#assigning-position-and-employment)
+      - [Delete account is not supported](#delete-account-is-not-supported)
       - [Resource Script](#resource-script)
         - [Department](#department)
         - [Position](#position)
         - [Department manager assignments](#department-manager-assignments)
-  - [Setup the connector](#setup-the-connector)
   - [Getting help](#getting-help)
   - [HelloID docs](#helloid-docs)
 
