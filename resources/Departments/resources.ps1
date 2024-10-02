@@ -77,7 +77,6 @@ try {
     Write-Information "Creating [$($resourceContext.SourceData.Count)] Departments"
     $outputContext.Success = $true
 
-
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
     foreach ($resource in $resourceContext.SourceData) {
@@ -136,7 +135,6 @@ try {
         $auditMessage = "Could not create CAPP12 Departments. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
-        Departments
         $auditMessage = "Could not create CAPP12 Departments. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
