@@ -12,7 +12,7 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function getValue() {\\n    return Person.Accounts.MicrosoftActiveDirectory.sAMAccountName\\n}\\n\\ngetValue();\"",
+          "Value": "\"function getAdfsLogin() {\\n    return Person.Accounts.MicrosoftActiveDirectory.userPrincipalName\\n}\\n\\ngetAdfsLogin();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": true
         }
@@ -63,7 +63,7 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function getValue() {\\r\\n    return Person.Accounts.MicrosoftActiveDirectory.userPrincipalName\\r\\n}\\r\\n\\r\\ngetValue();\"",
+          "Value": "\"function getEmail() {\\r\\n    return Person.Accounts.MicrosoftActiveDirectory.mail\\r\\n}\\r\\n\\r\\ngetEmail();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": true
         }
@@ -95,8 +95,7 @@
           "MapForActions": [
             "Create",
             "Update",
-            "Enable",
-            "Disable"
+            "Delete"
           ],
           "MappingMode": "None",
           "Value": "\"\"",
@@ -107,7 +106,7 @@
     },
     {
       "Name": "_extension.Departments",
-      "Description": "",
+      "Description": "Note: An empty array is needed in the Powershell scripts",
       "Type": "Array",
       "MappingActions": [
         {
@@ -116,7 +115,7 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function getValue() {\\r\\n    return [];\\r\\n}\\r\\ngetValue();\"",
+          "Value": "\"function getDepartments() {\\r\\n    return [];\\r\\n}\\r\\ngetDepartments();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": true
         }
@@ -131,8 +130,7 @@
           "MapForActions": [
             "Create",
             "Update",
-            "Enable",
-            "Disable"
+            "Delete"
           ],
           "MappingMode": "Fixed",
           "Value": "\"d2e993ca-d017-4611-9a05-4bbeaf3aa5fa\"",
@@ -143,7 +141,7 @@
     },
     {
       "Name": "_extension.Positions",
-      "Description": "",
+      "Description": "Note: An empty array is needed in the Powershell scripts",
       "Type": "Array",
       "MappingActions": [
         {
@@ -152,7 +150,7 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function getValue() {\\n    return [];\\n}\\n\\ngetValue();\"",
+          "Value": "\"function getPositions() {\\r\\n    return [];\\r\\n}\\r\\ngetPositions();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": true
         }
