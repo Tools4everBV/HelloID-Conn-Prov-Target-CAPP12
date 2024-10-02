@@ -105,7 +105,7 @@ try {
     $desiredDepartments = [array](($desiredContracts | Select-Object $departmentLookupValue).$departmentLookupValue | Select-Object -Unique)
 
     # Set OutputContext to store the account object.
-    $actionContext.Data | Add-Member @{ ends_on = "$((Get-Date).AddDays(-1).ToString('dd-MM-yyyy'))" } -Force
+    $actionContext.Data.ends_on = $null
     $outputContext.Data = $actionContext.Data
     $outputContext.Data._extension.Positions = [array]($desiredPositions)
     $outputContext.Data._extension.Departments = [array]($desiredDepartments)
