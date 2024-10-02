@@ -80,7 +80,6 @@ try {
     # Skip contracts that includes no CAPP12Department or CAPP12Manager
     $capp12Departments = $resourceContext.SourceData | Where-Object { (-not [string]::IsNullOrEmpty($_.CAPP12Department)) -and (-not [string]::IsNullOrEmpty($_.CAPP12Manager)) }
 
-
     $groupedDepartments = $capp12Departments | Group-Object CAPP12Department
     Write-Information "Filtered department with valid CAPP12 Department data, Processing [$($groupedDepartments.count)] departments of total [$($resourceContext.SourceData.Count)] departments"
 
@@ -96,6 +95,7 @@ try {
 
             <# Resource creation preview uses a timeout of 30 seconds while actual run has timeout of 10 minutes #>
             $endDate = (Get-Date).AddDays($actionContext.Configuration.ManagerAssignmentTimeOutInDays).ToString('dd-MM-yyyy')
+            
             $body = [PSCustomObject]@{
                 user_code       = $manager
                 department_code = $department
