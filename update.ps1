@@ -138,10 +138,10 @@ try {
     Write-Information "Verifying if a CAPP12 account for [$($personContext.Person.DisplayName)] exists"
     $correlatedAccount = Get-HelloIdStoredAccountData -SystemGuid $actionContext.Data._extension.SystemGuid
     $outputContext.PreviousData = $correlatedAccount
+    $outputContext.PreviousData | Add-Member @{ ends_on = $null } -Force
 
     # Overwrite with stored Properties
     $actionContext.Data.code = $actionContext.References.Account
-    $actionContext.Data | Add-Member @{ ends_on = $correlatedAccount.ends_on } -Force
 
     # Set OutputContext to store the account object.
     $outputContext.Data = $actionContext.Data
@@ -238,7 +238,7 @@ try {
                         $body = [PSCustomObject]@{
                             user_code     = $actionContext.Data.code
                             position_code = $position
-                            ends_on       = (Get-Date -Format 'dd-MM-yyyy')
+                            ends_on       = "$((Get-Date).AddDays(-1).ToString('dd-MM-yyyy'))"
                         } | ConvertTo-Json
                         $splatWebRequest = @{
                             Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/assignments"
@@ -287,7 +287,7 @@ try {
                         $body = [PSCustomObject]@{
                             user_code       = $actionContext.Data.code
                             department_code = $department
-                            ends_on         = (Get-Date -Format 'dd-MM-yyyy')
+                            ends_on         = "$((Get-Date).AddDays(-1).ToString('dd-MM-yyyy'))"
                         } | ConvertTo-Json -Depth 10
 
                         $splatWebRequest = @{
@@ -360,4 +360,3 @@ try {
             IsError = $true
         })
 }
-
