@@ -47,20 +47,16 @@ _HelloID-Conn-Prov-Target-CAPP12_ is a _target_ connector. _CAPP12_ provides a s
 
 The following lifecycle actions are available:
 
-| Action                                    | Description                             |
-| ----------------------------------------- | --------------------------------------- |
-| create.ps1                                | PowerShell _create_ lifecycle action    |
-| disable.ps1                               | PowerShell _disable_ lifecycle action   |
-| enable.ps1                                | PowerShell _enable_ lifecycle action    |
-| update.ps1                                | PowerShell _update_ lifecycle action    |
-| permissions/groups/grantPermission.ps1    | No available                            |
-| permissions/groups/revokePermission.ps1   | No available                            |
-| permissions/groups/permissions.ps1        | No available                            |
-| resources/DepartmentManager/resources.ps1 | PowerShell _resources_ lifecycle action |
-| resources/Departments/resources.ps1       | PowerShell _resources_ lifecycle action |
-| resources/Position/resources.ps1          | PowerShell _resources_ lifecycle action |
-| configuration.json                        | Default _configuration.json_            |
-| fieldMapping.json                         | Default _fieldMapping.json_             |
+| Action                                    | Description                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------ |
+| create.ps1                                | PowerShell _create_ lifecycle action. For creating or correlating the CAPP12 account |
+| delete.ps1                                | PowerShell _disable_ lifecycle action. For disabling the CAPP12 account              |
+| update.ps1                                | PowerShell _update_ lifecycle action. For updating the CAPP12 account                |
+| resources/DepartmentManager/resources.ps1 | PowerShell _resources_ lifecycle action                                              |
+| resources/Departments/resources.ps1       | PowerShell _resources_ lifecycle action                                              |
+| resources/Position/resources.ps1          | PowerShell _resources_ lifecycle action                                              |
+| configuration.json                        | Default _configuration.json_                                                         |
+| fieldMapping.json                         | Default _fieldMapping.json_                                                          |
 
 ## Getting started
 
