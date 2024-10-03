@@ -1,7 +1,7 @@
-#################################################
-# HelloID-Conn-Prov-Target-CAPP12-Enable
+##################################################
+# HelloID-Conn-Prov-Target-CAPP12-Delete
 # PowerShell V2
-#################################################
+##################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -94,8 +94,8 @@ try {
     $correlatedAccount = Get-HelloIdStoredAccountData -SystemGuid $actionContext.Data._extension.SystemGuid
 
     if ($null -ne $correlatedAccount) {
-        $action = 'EnableAccount'
         $correlatedAccount.code = $actionContext.References.Account
+        $action = 'DisableAccount'
     } else {
         $action = 'NotFound'
     }
@@ -104,10 +104,10 @@ try {
     Write-Information "[DryRun = $($actionContext.DryRun)]"
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
     switch ($action) {
-        'EnableAccount' {
-            Write-Information "Enabling CAPP12 account with accountReference: [$($actionContext.References.Account)]"
+        'DisableAccount' {
+            Write-Information "Disabling CAPP12 account with accountReference: [$($actionContext.References.Account)]"
             $correlatedAccount | Add-Member @{
-                ends_on = $null
+                ends_on = "$((Get-Date).AddDays(-1).ToString('dd-MM-yyyy'))"
             } -Force
             $body = $correlatedAccount | Select-Object * -ExcludeProperty _extension | ConvertTo-Json
 
@@ -125,7 +125,7 @@ try {
 
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = 'Enable account was successful'
+                    Message = 'Disable account was successful'
                     IsError = $false
                 })
             break
@@ -133,25 +133,24 @@ try {
 
         'NotFound' {
             Write-Information "Previous CAPP12 account values for: [$($personContext.Person.DisplayName)] not found, No Stored FieldMapping values"
-            $outputContext.Success = $false
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "Could not enable Account  [$($actionContext.References.Account)], Previous CAPP12 account values for: [$($personContext.Person.DisplayName)] not found, No Stored FieldMapping values"
-                    IsError = $true
+                    Message = "Could not disable Account  [$($actionContext.References.Account)], Previous CAPP12 account values for: [$($personContext.Person.DisplayName)] not found, No Stored FieldMapping values"
+                    IsError = $false
                 })
             break
         }
     }
-
 } catch {
     $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        $auditMessage = "Could not enable CAPP12 account. Error: $($errorObj.FriendlyMessage)"
+        $auditMessage = "Could not disable CAPP12 account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
-        $auditMessage = "Could not enable CAPP12 account. Error: $($_.Exception.Message)"
+        $auditMessage = "Could not disable CAPP12 account. Error: $($_.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{

@@ -2,7 +2,7 @@
   {
     "key": "BaseUrl",
     "type": "input",
-    "defaultValue": "https://defacto.capp12.nl",
+    "defaultValue": "https://<customername>.capp12.nl",
     "templateOptions": {
       "label": "CAPP12 API Baseurl",
       "placeholder": "CAPP12 API BaseURL",
