@@ -33,7 +33,8 @@ function Get-Capp12AuthorizationTokenAndCreateHeaders {
         $headers.Add('Accept', 'application/json')
         $headers.Add('Content-Type', 'application/json')
         Write-Output $headers
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -54,7 +55,8 @@ function Resolve-CAPP12Error {
         }
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
             if ($null -ne $ErrorObject.Exception.Response) {
                 $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
                 if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
@@ -65,7 +67,8 @@ function Resolve-CAPP12Error {
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
             $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
-        } catch {
+        }
+        catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
@@ -74,12 +77,17 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    Write-Information "Creating [$($resourceContext.SourceData.Count)] Positions"
+    Write-Information "Creating [$($resourceContext.SourceData.Count)] Positions (before filtering)"
+    
+    # Only process unique results
+    $resourceData = $resourceContext.SourceData | Select-Object -Unique externalId, name
+    
+    Write-Information "Creating [$($resourceData.Count)] Positions"
     $outputContext.Success = $true
 
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
-    foreach ($resource in $resourceContext.SourceData) {
+    foreach ($resource in $resourceData) {
         try {
             if ([string]::IsNullOrEmpty($resource.externalId) -or [string]::IsNullOrEmpty($resource.name)) {
                 Write-Information "Could not create Position [$($resource.externalId), $($resource.name)]"
@@ -90,9 +98,10 @@ try {
                 code  = $resource.externalId
                 title = $resource.name
             }
-            if ($actionContext.DryRun -eq $True) {
+            if ($actionContext.DryRun -eq $true) {
                 Write-Information "[DryRun] Create [$($body.Code) | $($body.title) ] CAPP12 Position, will be executed during enforcement"
-            } else {
+            }
+            else {
                 $splatPositions = @{
                     Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/positions"
                     Headers = $headers
@@ -108,7 +117,8 @@ try {
                 #         IsError = $false
                 #     })
             }
-        } catch {
+        }
+        catch {
             $outputContext.Success = $false
             $ex = $PSItem
             if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -116,7 +126,8 @@ try {
                 $errorObj = Resolve-CAPP12Error -ErrorObject $ex
                 $auditMessage = "Could not create CAPP12 Position. Error: $($errorObj.FriendlyMessage)"
                 Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-            } else {
+            }
+            else {
                 $auditMessage = "Could not create CAPP12 Position. Error: $($ex.Exception.Message)"
                 Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
             }
@@ -126,7 +137,8 @@ try {
                 })
         }
     }
-} catch {
+}
+catch {
     $outputContext.Success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -134,7 +146,8 @@ try {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
         $auditMessage = "Could not create CAPP12 Position. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Could not create CAPP12 Position. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }

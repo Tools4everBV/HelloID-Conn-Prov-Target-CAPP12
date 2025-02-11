@@ -33,7 +33,8 @@ function Get-Capp12AuthorizationTokenAndCreateHeaders {
         $headers.Add('Accept', 'application/json')
         $headers.Add('Content-Type', 'application/json')
         Write-Output $headers
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -54,7 +55,8 @@ function Resolve-CAPP12Error {
         }
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
             if ($null -ne $ErrorObject.Exception.Response) {
                 $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
                 if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
@@ -65,7 +67,8 @@ function Resolve-CAPP12Error {
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
             $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
-        } catch {
+        }
+        catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
@@ -74,14 +77,21 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    Write-Information "Creating [$($resourceContext.SourceData.Count)] DepartmentManager"
-    $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
+    Write-Information "Creating [$($resourceContext.SourceData.Count)] DepartmentManager (before filtering)"
+    
+    # Only process unique results
+    $resourceData = $resourceContext.SourceData | Select-Object -Unique CAPP12Department, CAPP12Manager
+    
+    Write-Information "Creating [$($resourceData.Count)] DepartmentManager"
 
     # Skip contracts that includes no CAPP12Department or CAPP12Manager
-    $capp12Departments = $resourceContext.SourceData | Where-Object { (-not [string]::IsNullOrEmpty($_.CAPP12Department)) -and (-not [string]::IsNullOrEmpty($_.CAPP12Manager)) }
-
+    $capp12Departments = $resourceData | Where-Object { (-not [string]::IsNullOrEmpty($_.CAPP12Department)) -and (-not [string]::IsNullOrEmpty($_.CAPP12Manager)) }
     $groupedDepartments = $capp12Departments | Group-Object CAPP12Department
     Write-Information "Filtered department with valid CAPP12 Department data, Processing [$($groupedDepartments.count)] departments of total [$($resourceContext.SourceData.Count)] departments"
+      
+    $outputContext.Success = $true
+
+    $headers = Get-Capp12AuthorizationTokenAndCreateHeaders    
 
     foreach ($resource in $groupedDepartments) {
         try {
@@ -89,7 +99,8 @@ try {
             $manager = ($resource.group | Select-Object -Property CAPP12Manager -Unique).CAPP12Manager
             if ($manager.Count -gt 1) {
                 throw "Could not set Manager on Department [$($department)], Multiple Managers found [$((($resource.group | ForEach-Object { $_.CAPP12Manager })  -join ", "))]"
-            } elseif ($manager.count -eq 0) {
+            }
+            elseif ($manager.count -eq 0) {
                 throw  "Could not set Manager on Department [$($department)], No Manager found."
             }
 
@@ -102,9 +113,10 @@ try {
                 ends_on         = $endDate
             }
 
-            if ($actionContext.DryRun -eq $True) {
+            if ($actionContext.DryRun -eq $true) {
                 Write-Information "[DryRun] Add CAPP12 DepartmentManager [$($department) | $( $manager) ], will be executed during enforcement"
-            } else {
+            }
+            else {
                 $splatDepartmentManager = @{
                     Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/managers"
                     Headers = $headers
@@ -120,7 +132,8 @@ try {
                 #         IsError = $false
                 #     })
             }
-        } catch {
+        }
+        catch {
             $outputContext.Success = $false
             $ex = $PSItem
             if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -128,7 +141,8 @@ try {
                 $errorObj = Resolve-CAPP12Error -ErrorObject $ex
                 $auditMessage = "Could not create CAPP12 DepartmentManager. Error: $($errorObj.FriendlyMessage)"
                 Write-Information "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-            } else {
+            }
+            else {
                 $auditMessage = "Could not create CAPP12 DepartmentManager. Error: $($ex.Exception.Message)"
                 Write-Information "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
             }
@@ -138,8 +152,9 @@ try {
                 })
         }
     }
-    $outputContext.Success = $true
-} catch {
+
+}
+catch {
     $outputContext.Success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -147,7 +162,8 @@ try {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
         $auditMessage = "Could not create CAPP12 DepartmentManagers. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Could not create CAPP12 DepartmentManagers. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
