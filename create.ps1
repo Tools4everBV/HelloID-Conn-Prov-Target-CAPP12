@@ -37,7 +37,8 @@ function Get-Capp12AuthorizationTokenAndCreateHeaders {
         $headers.Add('Accept', 'application/json')
         $headers.Add('Content-Type', 'application/json')
         Write-Output $headers
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -58,7 +59,8 @@ function Resolve-CAPP12Error {
         }
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
             if ($null -ne $ErrorObject.Exception.Response) {
                 $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
                 if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
@@ -69,7 +71,8 @@ function Resolve-CAPP12Error {
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
             $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
-        } catch {
+        }
+        catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
@@ -157,8 +160,8 @@ try {
                                 Message = "Successfully set active CAPP12 assignment: [$($position)]"
                                 IsError = $false
                             })
-                        break
                     }
+                    break
                 }
                 'SetDepartments' {
                     foreach ($department in $desiredDepartments) {
@@ -186,14 +189,16 @@ try {
                     break
                 }
             }
-        } catch {
+        }
+        catch {
             $ex = $PSItem
             if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
                 $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
                 $errorObj = Resolve-CAPP12Error -ErrorObject $ex
                 $auditMessage = "Could not create or set positions or department CAPP12 account. Error: $($errorObj.FriendlyMessage)"
                 Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-            } else {
+            }
+            else {
                 $auditMessage = "Could not create or set positions or department CAPP12 account. Error: $($ex.Exception.Message)"
                 Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
             }
@@ -206,7 +211,8 @@ try {
     if ( -not ($outputContext.AuditLogs.IsError -contains $true)) {
         $outputContext.Success = $true
     }
-} catch {
+}
+catch {
     $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -214,7 +220,8 @@ try {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
         $auditMessage = "Could not create or correlate CAPP12 account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Could not create or correlate CAPP12 account. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }

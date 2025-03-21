@@ -35,7 +35,8 @@ function Get-Capp12AuthorizationTokenAndCreateHeaders {
         $headers.Add('Accept', 'application/json')
         $headers.Add('Content-Type', 'application/json')
         Write-Output $headers
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -56,7 +57,8 @@ function Resolve-CAPP12Error {
         }
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
             if ($null -ne $ErrorObject.Exception.Response) {
                 $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
                 if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
@@ -67,7 +69,8 @@ function Resolve-CAPP12Error {
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
             $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
-        } catch {
+        }
+        catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
@@ -87,9 +90,11 @@ function Compare-Array {
     )
     if ($null -eq $DifferenceObject) {
         $Left = $ReferenceObject
-    } elseif ($null -eq $ReferenceObject) {
+    }
+    elseif ($null -eq $ReferenceObject) {
         $right = $DifferenceObject
-    } else {
+    }
+    else {
         $left = [string[]][Linq.Enumerable]::Except($ReferenceObject, $DifferenceObject)
         $right = [string[]][Linq.Enumerable]::Except($DifferenceObject, $ReferenceObject)
         $common = [string[]][Linq.Enumerable]::Intersect($ReferenceObject, $DifferenceObject)
@@ -157,7 +162,8 @@ try {
         $propertiesChanged = Compare-Object @splatCompareProperties -PassThru | Where-Object { $_.SideIndicator -eq '=>' }
         if ($propertiesChanged) {
             $actionList += 'UpdateAccount'
-        } else {
+        }
+        else {
             $actionList += 'NoChanges'
         }
         $revokeDepartments , $grantDepartments , $update = Compare-Array -ReferenceObject $outputContext.PreviousData._extension.Departments -DifferenceObject $outputContext.Data._extension.Departments
@@ -174,7 +180,8 @@ try {
         if ($revokePositions.count -gt 0) {
             $actionList += 'RevokePositions'
         }
-    } else {
+    }
+    else {
         $action = 'NotFound'
     }
 
@@ -229,8 +236,8 @@ try {
                                 Message = "Successfully added CAPP12 assignment: [$($position)]"
                                 IsError = $false
                             })
-                        break
                     }
+                    break
                 }
                 'RevokePositions' {
                     foreach ($position in $revokePositions) {
@@ -253,8 +260,8 @@ try {
                                 Message = "Successfully revoked CAPP12 assignment: [$($position)]"
                                 IsError = $false
                             })
-                        break
                     }
+                    break
                 }
                 'AddDepartments' {
                     foreach ($department in $grantDepartments) {
@@ -323,14 +330,16 @@ try {
                     break
                 }
             }
-        } catch {
+        }
+        catch {
             $ex = $PSItem
             if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
                 $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
                 $errorObj = Resolve-CAPP12Error -ErrorObject $ex
                 $auditMessage = "Could not update or set positions or department CAPP12 account. Error: $($errorObj.FriendlyMessage)"
                 Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-            } else {
+            }
+            else {
                 $auditMessage = "Could not update or set positions or department CAPP12 account. Error: $($ex.Exception.Message)"
                 Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
             }
@@ -343,7 +352,8 @@ try {
     if ( -not ($outputContext.AuditLogs.IsError -contains $true)) {
         $outputContext.Success = $true
     }
-} catch {
+}
+catch {
     $outputContext.Success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -351,7 +361,8 @@ try {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
         $auditMessage = "Could not update CAPP12 account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Could not update CAPP12 account. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
