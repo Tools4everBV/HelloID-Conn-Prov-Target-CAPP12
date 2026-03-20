@@ -6,10 +6,6 @@
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
-# Script Properties
-$departmentLookupValue = { $_.Department.ExternalId }  # Employments
-$positionLookupValue = { $_.Title.ExternalId }   # Assignments
-
 #region functions
 function Get-Capp12AuthorizationTokenAndCreateHeaders {
     [CmdletBinding()]
@@ -76,42 +72,6 @@ function Resolve-CAPP12Error {
         Write-Output $httpErrorObj
     }
 }
-
-function Compare-Array {
-    [OutputType([array], [array], [array])] # $Left , $Right, $common
-    param(
-        [parameter()]
-        [AllowEmptyCollection()]
-        [string[]]$ReferenceObject,
-
-        [parameter()]
-        [AllowEmptyCollection()]
-        [string[]]$DifferenceObject
-    )
-    if ($null -eq $DifferenceObject) {
-        $Left = $ReferenceObject
-    }
-    elseif ($null -eq $ReferenceObject) {
-        $right = $DifferenceObject
-    }
-    else {
-        $left = [string[]][Linq.Enumerable]::Except($ReferenceObject, $DifferenceObject)
-        $right = [string[]][Linq.Enumerable]::Except($DifferenceObject, $ReferenceObject)
-        $common = [string[]][Linq.Enumerable]::Intersect($ReferenceObject, $DifferenceObject)
-    }
-    return $Left , $Right, $common
-}
-
-function Get-HelloIdStoredAccountData {
-    [CmdletBinding()]
-    param(
-        [string]
-        $SystemGuid
-    )
-    ($personContext.Person.Accounts.PSObject.Properties | Where-Object {
-        $_.Value._extension.SystemGuid -eq $SystemGuid
-    }).value
-}
 #endregion
 
 try {
@@ -119,238 +79,113 @@ try {
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw 'The account reference could not be found'
     }
-    Write-Information 'Getting the contracts in conditions'
-    [array]$desiredContracts = $personContext.Person.Contracts | Where-Object { $_.Context.InConditions -eq $true }
-    if ($actionContext.DryRun -eq $true) {
-        [array]$desiredContracts = $personContext.Person.Contracts
+    $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
+
+    Write-Information "Verifying if a CAPP12 account exists"
+    $splatGetUserParams = @{
+        Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users?code=$($actionContext.References.Account)"
+        Headers = $headers
+        Method  = 'GET'
     }
-    if ($desiredContracts.length -lt 1) {
-        throw 'No Contracts in scope [InConditions] found!'
+    try {            
+        $correlatedAccount = Invoke-RestMethod @splatGetUserParams
     }
-    Write-Information "Number of desiredContracts $($desiredContracts.count)"
-    if ((($desiredContracts | Select-Object $departmentLookupValue).$departmentLookupValue | Measure-Object).count -ne $desiredContracts.count) {
-        throw  "Not all contracts hold a value with the departmentLookupValue [$departmentLookupValue]. Verify your script- or HelloID person mapping."
-    }
-    if ((($desiredContracts | Select-Object $positionLookupValue).$positionLookupValue | Measure-Object).count -ne $desiredContracts.count) {
-        throw  "Not all contracts hold a value with the positionLookupValue [$positionLookupValue]. Verify your script- or HelloID person mapping."
-    }
-
-    $desiredPositions = [array](($desiredContracts | Select-Object $positionLookupValue).$positionLookupValue | Select-Object -Unique )
-    $desiredDepartments = [array](($desiredContracts | Select-Object $departmentLookupValue).$departmentLookupValue | Select-Object -Unique)
-    Write-Information "Desired Positions [$($desiredPositions -join ',')]"
-    Write-Information "Desired Department [$($desiredDepartments -join ',')]"
-
-    Write-Information "Verifying if a CAPP12 account for [$($personContext.Person.DisplayName)] exists"
-    $correlatedAccount = Get-HelloIdStoredAccountData -SystemGuid $actionContext.Data._extension.SystemGuid
-    $outputContext.PreviousData = $correlatedAccount
-    $outputContext.PreviousData | Add-Member @{ ends_on = $null } -Force
-
-    # Overwrite with stored Properties
-    $actionContext.Data.code = $actionContext.References.Account
-
-    # Set OutputContext to store the account object.
-    $outputContext.Data = $actionContext.Data
-    $outputContext.Data._extension.Positions = [array]($desiredPositions)
-    $outputContext.Data._extension.Departments = [array]($desiredDepartments)
-
-    $actionList = @()
-    if ($null -ne $correlatedAccount) {
-        $splatCompareProperties = @{
-            ReferenceObject  = @(($outputContext.PreviousData | Select-Object * -ExcludeProperty _extension).PSObject.Properties )
-            DifferenceObject = @(($actionContext.Data | Select-Object * -ExcludeProperty _extension).PSObject.Properties)
+    catch {
+        if ($_.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+            $statusCode = [int]$_.Exception.Response.StatusCode
         }
-        $propertiesChanged = Compare-Object @splatCompareProperties -PassThru | Where-Object { $_.SideIndicator -eq '=>' }
-        if ($propertiesChanged) {
-            $actionList += 'UpdateAccount'
+        elseif ($_.Exception.GetType().FullName -eq 'System.Net.WebException' -and $null -ne $_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+            
+        # In case of a 404 (not found), no account was found
+        if ($statusCode -eq 404) {
+            Write-Information "CAPP12 account with accountReference: [$($actionContext.References.Account)] not found"
+            $correlatedAccount = $null
         }
         else {
-            $actionList += 'NoChanges'
+            throw
         }
-        $revokeDepartments , $grantDepartments , $update = Compare-Array -ReferenceObject $outputContext.PreviousData._extension.Departments -DifferenceObject $outputContext.Data._extension.Departments
-        $revokePositions , $grantPositions , $update = Compare-Array -ReferenceObject $outputContext.PreviousData._extension.Positions -DifferenceObject $outputContext.Data._extension.Positions
-        if ($grantDepartments.count -gt 0) {
-            $actionList += 'AddDepartments'
+    }
+    $outputContext.PreviousData = $correlatedAccount
+
+    # Parse the existing ends_on value, because the API expects a different date format for updating accounts, than it returns when retrieving accounts. Omitting ends_on erases any existing value in CAPP12, which is not desired.
+    $correlatedAccount.ends_on = try { [datetime]::ParseExact([string]$correlatedAccount.ends_on, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture).ToString('dd-MM-yyyy') } catch { $null }
+    $endsOn = $correlatedAccount.ends_on
+    $actionContext.Data | Add-Member -MemberType NoteProperty -Name 'ends_on' -Value $endsOn -Force
+
+    $actionContext.Data | Add-Member -MemberType NoteProperty -Name 'code' -Value $actionContext.References.Account -Force
+
+    if ($null -ne $correlatedAccount) {
+        $splatCompareProperties = @{
+            ReferenceObject  = @($correlatedAccount.PSObject.Properties)
+            DifferenceObject = @($actionContext.Data.PSObject.Properties)
         }
-        if ($revokeDepartments.count -gt 0) {
-            $actionList += 'RevokeDepartments'
+        $propertiesChanged = Compare-Object @splatCompareProperties -PassThru | Where-Object { 
+            $_.SideIndicator -eq '=>' -and $correlatedAccount.PSObject.Properties.Name -contains $_.Name 
         }
-        if ($grantPositions.count -gt 0) {
-            $actionList += 'AddPositions'
+        if ($propertiesChanged) {
+            $action = 'UpdateAccount'
         }
-        if ($revokePositions.count -gt 0) {
-            $actionList += 'RevokePositions'
+        else {
+            $action = 'NoChanges'
         }
     }
     else {
         $action = 'NotFound'
     }
 
-    # # Process
-    Write-Information "[DryRun = $($actionContext.DryRun)]"
-    $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
-    foreach ($action in $actionList) {
-        try {
-            switch ($action) {
-                'UpdateAccount' {
-                    Write-Information "Updating CAPP12 account with accountReference: [$($actionContext.References.Account)]"
-                    Write-Information "Account property(s) required to update: $($propertiesChanged.Name -join ', ')"
-                    $body = $actionContext.Data | Select-Object * -ExcludeProperty _extension | ConvertTo-Json
-                    $splatWebRequest = @{
-                        Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users"
-                        Headers = $headers
-                        Method  = 'POST'
-                        Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
-                    }
+    # Process
+    switch ($action) {
+        'UpdateAccount' {
+            Write-Information "Account property(s) required to update: $($propertiesChanged.Name -join ', ')"
+            $body = $actionContext.Data | ConvertTo-Json
 
-                    if (-not($actionContext.DryRun -eq $true)) {
-                        # Make sure to test with special characters and if needed; add utf8 encoding.
-                        $null = Invoke-RestMethod @splatWebRequest -Verbose:$false # Always 204
-                    }
-
-                    $outputContext.Success = $true
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Message = "Update account was successful, Account property(s) updated: [$($propertiesChanged.name -join ',')]"
-                            IsError = $false
-                        })
-                    break
-                }
-
-                'AddPositions' {
-                    foreach ($position in $grantPositions) {
-                        Write-Information "Adding CAPP12 assignment with position code [$($position)]"
-                        $body = [PSCustomObject]@{
-                            user_code     = $actionContext.Data.code
-                            position_code = $position
-                            ends_on       = $null
-                        } | ConvertTo-Json
-                        $splatWebRequest = @{
-                            Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/assignments"
-                            Headers = $headers
-                            Method  = 'POST'
-                            Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
-                        }
-                        if (-not($actionContext.DryRun -eq $true)) {
-                            $null = Invoke-RestMethod @splatWebRequest -Verbose:$false
-                        }
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                Message = "Successfully added CAPP12 assignment: [$($position)]"
-                                IsError = $false
-                            })
-                    }
-                    break
-                }
-                'RevokePositions' {
-                    foreach ($position in $revokePositions) {
-                        Write-Information "Revoke CAPP12 assignment with position code [$($position)]"
-                        $body = [PSCustomObject]@{
-                            user_code     = $actionContext.Data.code
-                            position_code = $position
-                            ends_on       = "$((Get-Date).AddDays(-1).ToString('dd-MM-yyyy'))"
-                        } | ConvertTo-Json
-                        $splatWebRequest = @{
-                            Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/assignments"
-                            Headers = $headers
-                            Method  = 'POST'
-                            Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
-                        }
-                        if (-not($actionContext.DryRun -eq $true)) {
-                            $null = Invoke-RestMethod @splatWebRequest -Verbose:$false
-                        }
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                Message = "Successfully revoked CAPP12 assignment: [$($position)]"
-                                IsError = $false
-                            })
-                    }
-                    break
-                }
-                'AddDepartments' {
-                    foreach ($department in $grantDepartments) {
-                        Write-Information "Adding CAPP12 employment with department code [$($department)]"
-                        $body = [PSCustomObject]@{
-                            user_code       = $actionContext.Data.code
-                            department_code = $department
-                            ends_on         = $null
-                        } | ConvertTo-Json -Depth 10
-
-                        $splatWebRequest = @{
-                            Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/employments"
-                            Headers = $headers
-                            Method  = 'POST'
-                            Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
-                        }
-                        if (-not($actionContext.DryRun -eq $true)) {
-                            $null = Invoke-RestMethod @splatWebRequest -Verbose:$false
-                        }
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                Message = "Successfully added CAPP12 employment: [$($department)]"
-                                IsError = $false
-                            })
-                    }
-                    break
-                }
-                'RevokeDepartments' {
-                    foreach ($department in $revokeDepartments) {
-                        Write-Information "Revoke CAPP12 employment with department code [$($department)]"
-                        $body = [PSCustomObject]@{
-                            user_code       = $actionContext.Data.code
-                            department_code = $department
-                            ends_on         = "$((Get-Date).AddDays(-1).ToString('dd-MM-yyyy'))"
-                        } | ConvertTo-Json -Depth 10
-
-                        $splatWebRequest = @{
-                            Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/employments"
-                            Headers = $headers
-                            Method  = 'POST'
-                            Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
-                        }
-                        if (-not($actionContext.DryRun -eq $true)) {
-                            $null = Invoke-RestMethod @splatWebRequest -Verbose:$false
-                        }
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                Message = "Successfully revoked CAPP12 employment: [$($department)]"
-                                IsError = $false
-                            })
-                    }
-                    break
-                }
-
-                'NoChanges' {
-                    Write-Information "No changes to CAPP12 account with accountReference: [$($actionContext.References.Account)]"
-                    $outputContext.Success = $true
-                    break
-                }
-
-                'NotFound' {
-                    Write-Information "Previous CAPP12 account values for: [$($personContext.Person.DisplayName)] not found, No Stored FieldMapping values"
-                    $outputContext.Success = $false
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Message = "CAPP12 account with accountReference: [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted, or the account is not correlated"
-                            IsError = $true
-                        })
-                    break
-                }
+            $splatWebRequest = @{
+                Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users"
+                Headers = $headers
+                Method  = 'POST'
+                Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
             }
-        }
-        catch {
-            $ex = $PSItem
-            if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
-                $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-                $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-                $auditMessage = "Could not update or set positions or department CAPP12 account. Error: $($errorObj.FriendlyMessage)"
-                Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+                
+            if (-not($actionContext.DryRun -eq $true)) {
+                Write-Information "Updating CAPP12 account with accountReference: [$($actionContext.References.Account)]"
+                # Make sure to test with special characters and if needed; add utf8 encoding.
+                $null = Invoke-RestMethod @splatWebRequest -Verbose:$false # Always 204
             }
             else {
-                $auditMessage = "Could not update or set positions or department CAPP12 account. Error: $($ex.Exception.Message)"
-                Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                Write-Information "[DryRun] Update CAPP12 account with accountReference: [$($actionContext.References.Account)], will be executed during enforcement"
             }
+
+            $outputContext.Success = $true
+            $outputContext.Data = $actionContext.Data
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = $auditMessage
+                    Message = "Update account was successful, Account property(s) updated: [$($propertiesChanged.name -join ',')]"
+                    IsError = $false
+                })
+            break
+        }
+
+        'NoChanges' {
+            Write-Information "No changes to CAPP12 account with accountReference: [$($actionContext.References.Account)]"
+            $outputContext.Success = $true
+            $outputContext.Data = $actionContext.Data
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "Skipped updating CAPP12 account with AccountReference: [$($actionContext.References.Account)]. Reason: No changes."
+                    IsError = $false
+                })
+            break
+        }
+
+        'NotFound' {
+            Write-Information "CAPP12 account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted"
+            $outputContext.Success = $false
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "CAPP12 account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted"
                     IsError = $true
                 })
+            break
         }
-    }
-    if ( -not ($outputContext.AuditLogs.IsError -contains $true)) {
-        $outputContext.Success = $true
     }
 }
 catch {
@@ -359,15 +194,15 @@ catch {
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        $auditMessage = "Could not update CAPP12 account. Error: $($errorObj.FriendlyMessage)"
+        $auditLogMessage = "Could not update CAPP12 account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        $auditMessage = "Could not update CAPP12 account. Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Could not update CAPP12 account. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
-            Message = $auditMessage
+            Message = $auditLogMessage
             IsError = $true
         })
 }

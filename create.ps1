@@ -6,10 +6,6 @@
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
-# Script Properties
-$departmentLookupValue = { $_.Department.ExternalId }  # Employments
-$positionLookupValue = { $_.Title.ExternalId }   # Assignments
-
 #region functions
 function Get-Capp12AuthorizationTokenAndCreateHeaders {
     [CmdletBinding()]
@@ -85,132 +81,112 @@ try {
     $outputContext.AccountReference = 'Currently not available'
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
-    $actionList = @()
-    $actionList += 'CreateAccount'
-    $actionList += 'SetPositions'
-    $actionList += 'SetDepartments'
-    Write-Information 'Getting the contracts in conditions'
-    [array]$desiredContracts = $personContext.Person.Contracts | Where-Object { $_.Context.InConditions -eq $true }
-    if ($actionContext.DryRun -eq $true) {
-        [array]$desiredContracts = $personContext.Person.Contracts
-    }
-    if ($desiredContracts.length -lt 1) {
-        throw 'No Contracts in scope [InConditions] found!'
-    }
-    if ((($desiredContracts | Select-Object $departmentLookupValue).$departmentLookupValue | Measure-Object).count -ne $desiredContracts.count) {
-        throw  "Not all contracts hold a value with the departmentLookupValue [$departmentLookupValue]. Verify your script- or HelloID person mapping."
-    }
-    if ((($desiredContracts | Select-Object $positionLookupValue).$positionLookupValue | Measure-Object).count -ne $desiredContracts.count) {
-        throw  "Not all contracts hold a value with the positionLookupValue [$positionLookupValue]. Verify your script- or HelloID person mapping."
-    }
+    # Validate correlation configuration
+    if ($actionContext.CorrelationConfiguration.Enabled) {
+        $correlationField = $actionContext.CorrelationConfiguration.AccountField
+        $correlationValue = $actionContext.CorrelationConfiguration.PersonFieldValue
 
-    $desiredPositions = [array](($desiredContracts | Select-Object $positionLookupValue).$positionLookupValue | Select-Object -Unique )
-    $desiredDepartments = [array](($desiredContracts | Select-Object $departmentLookupValue).$departmentLookupValue | Select-Object -Unique)
+        if ([string]::IsNullOrEmpty($($correlationField)) -or ($correlationField -ne 'code')) {
+            throw 'Correlation is enabled but not configured correctly'
+        }
+        if ([string]::IsNullOrEmpty($($correlationValue))) {
+            throw 'Correlation is enabled but [accountFieldValue] is empty. Please make sure it is correctly mapped'
+        }
 
-    # Set OutputContext to store the account object.
-    $actionContext.Data | Add-Member @{ ends_on = $null } -Force
-    $outputContext.Data = $actionContext.Data
-    $outputContext.Data._extension.Positions = [array]($desiredPositions)
-    $outputContext.Data._extension.Departments = [array]($desiredDepartments)
+        # Determine if a user needs to be [created] or [correlated]
+        Write-Information "Verifying if a CAPP12 account exists where $correlationField is: [$correlationValue]"
 
-    # Process
-    Write-Information "[DryRun = $($actionContext.DryRun)]"
-    $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
-    foreach ($action in $actionList) {
+        # Retrieve user details using an API call and store the result in $correlatedAccount
+        $splatGetUserParams = @{
+            Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users?$correlationField=$correlationValue"
+            Headers = $headers
+            Method  = 'GET'
+        }
+
         try {
-            switch ($action) {
-                'CreateAccount' {
-                    Write-Information 'Creating or Update CAPP12 account'
-                    $body = $actionContext.Data | Select-Object * -ExcludeProperty _extension | ConvertTo-Json
-                    $splatWebRequest = @{
-                        Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users"
-                        Headers = $headers
-                        Method  = 'POST'
-                        Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
-                    }
-
-                    if (-not($actionContext.DryRun -eq $true)) {
-                        $null = Invoke-RestMethod @splatWebRequest -Verbose:$false # Always 204
-                    }
-                    $outputContext.AccountReference = $actionContext.Data.code
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Message = "Create or Update account was successful. AccountReference is: [$($outputContext.AccountReference)]"
-                            IsError = $false
-                        })
-                    break
-                }
-                'SetPositions' {
-                    foreach ($position in $desiredPositions) {
-                        Write-Information "Setting CAPP12 assignment with position code [$($position)]"
-                        $body = [PSCustomObject]@{
-                            user_code     = $actionContext.Data.code
-                            position_code = $position
-                            ends_on       = $null
-                        } | ConvertTo-Json
-                        $splatWebRequest = @{
-                            Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/assignments"
-                            Headers = $headers
-                            Method  = 'POST'
-                            Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
-                        }
-                        if (-not($actionContext.DryRun -eq $true)) {
-                            $null = Invoke-RestMethod @splatWebRequest -Verbose:$false
-                        }
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                Message = "Successfully set active CAPP12 assignment: [$($position)]"
-                                IsError = $false
-                            })
-                    }
-                    break
-                }
-                'SetDepartments' {
-                    foreach ($department in $desiredDepartments) {
-                        Write-Information "Setting CAPP12 employment with department code [$($department)]"
-                        $body = [PSCustomObject]@{
-                            user_code       = $actionContext.Data.code
-                            department_code = $department
-                            ends_on         = $null
-                        } | ConvertTo-Json -Depth 10
-
-                        $splatWebRequest = @{
-                            Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/employments"
-                            Headers = $headers
-                            Method  = 'POST'
-                            Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
-                        }
-                        if (-not($actionContext.DryRun -eq $true)) {
-                            $null = Invoke-RestMethod @splatWebRequest -Verbose:$false
-                        }
-                        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                                Message = "Successfully set active CAPP12 employment: [$($department)]"
-                                IsError = $false
-                            })
-                    }
-                    break
-                }
+            $response = Invoke-RestMethod @splatGetUserParams
+            
+            # API should return JSON for single user. CSV means query params were ignored. Throw an error.
+            if ($response -is [string] -and $response -match ';') {
+                throw "API returned CSV response, indicating correlation is not configured correctly."
+            }
+            else {
+                $correlatedAccount = $response
             }
         }
         catch {
-            $ex = $PSItem
-            if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
-                $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
-                $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-                $auditMessage = "Could not create or set positions or department CAPP12 account. Error: $($errorObj.FriendlyMessage)"
-                Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+            if ($_.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+            }
+            elseif ($_.Exception.GetType().FullName -eq 'System.Net.WebException' -and $null -ne $_.Exception.Response) {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+            }
+            
+            # In case of a 404 (not found), no account was found
+            if ($statusCode -eq 404) {
+                Write-Information "No CAPP12 account found where $correlationField is: [$correlationValue]"
+                $correlatedAccount = $null
             }
             else {
-                $auditMessage = "Could not create or set positions or department CAPP12 account. Error: $($ex.Exception.Message)"
-                Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                throw
             }
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = $auditMessage
-                    IsError = $true
-                })
         }
     }
-    if ( -not ($outputContext.AuditLogs.IsError -contains $true)) {
-        $outputContext.Success = $true
+    
+    if (($correlatedAccount | Measure-Object).Count -eq 0) {
+        $action = 'CreateAccount'
     }
+    elseif (($correlatedAccount | Measure-Object).Count -eq 1) {
+        $action = 'CorrelateAccount'
+    }
+    elseif (($correlatedAccount | Measure-Object).Count -gt 1) {
+        throw "Multiple accounts found for person where $correlationField is: [$correlationValue]"
+    }
+
+    # Process
+    
+    switch ($action) {
+        'CreateAccount' {
+            # Newly created accounts should start disabled until explicitly enabled.
+            $actionContext.Data | Add-Member -MemberType NoteProperty -Name 'ends_on' -Value (Get-Date).AddDays(-1).ToString('dd-MM-yyyy') -Force
+            $body = $actionContext.Data | ConvertTo-Json
+
+            $splatWebRequest = @{
+                Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users"
+                Headers = $headers
+                Method  = 'POST'
+                Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
+            }
+            
+            if (-not($actionContext.DryRun -eq $true)) {
+                Write-Information 'Creating CAPP12 account'
+                $null = Invoke-RestMethod @splatWebRequest -Verbose:$false # Always 204
+                
+                $outputContext.Data = $body
+                $outputContext.AccountReference = $actionContext.Data.code
+            }
+            else {
+                Write-Information '[DryRun] Create CAPP12 account, will be executed during enforcement'
+            }
+            $auditLogMessage = "Create account was successful. AccountReference is: [$($outputContext.AccountReference)]"
+            break
+        }
+        'CorrelateAccount' {
+            Write-Information 'Correlating CAPP12 account'
+            
+            $outputContext.Data = $correlatedAccount
+            $outputContext.AccountReference = $correlatedAccount.code
+            $outputContext.AccountCorrelated = $true
+            $auditLogMessage = "Correlated account: [$($outputContext.AccountReference)] on field: [$($correlationField)] with value: [$($correlationValue)]"
+            break
+        }
+    }
+    $outputContext.Success = $true
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Action  = $action
+            Message = $auditLogMessage
+            IsError = $false
+        })
 }
 catch {
     $outputContext.success = $false
@@ -218,15 +194,15 @@ catch {
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        $auditMessage = "Could not create or correlate CAPP12 account. Error: $($errorObj.FriendlyMessage)"
+        $auditLogMessage = "Could not create or correlate CAPP12 account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        $auditMessage = "Could not create or correlate CAPP12 account. Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Could not create or correlate CAPP12 account. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
-            Message = $auditMessage
+            Message = $auditLogMessage
             IsError = $true
         })
 }

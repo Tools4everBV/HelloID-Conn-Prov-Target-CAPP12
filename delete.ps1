@@ -74,17 +74,6 @@ function Resolve-CAPP12Error {
         Write-Output $httpErrorObj
     }
 }
-
-function Get-HelloIdStoredAccountData {
-    [CmdletBinding()]
-    param(
-        [string]
-        $SystemGuid
-    )
-    ($personContext.Person.Accounts.PSObject.Properties | Where-Object {
-        $_.Value._extension.SystemGuid -eq $SystemGuid
-    }).value
-}
 #endregion
 
 try {
@@ -92,54 +81,87 @@ try {
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw 'The account reference could not be found'
     }
+    $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
-    Write-Information "Verifying if a CAPP12 account for [$($personContext.Person.DisplayName)] exists"
-    $correlatedAccount = Get-HelloIdStoredAccountData -SystemGuid $actionContext.Data._extension.SystemGuid
-
+    Write-Information "Verifying if a CAPP12 account exists"
+    $splatGetUserParams = @{
+        Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users?code=$($actionContext.References.Account)"
+        Headers = $headers
+        Method  = 'GET'
+    }
+    try {            
+        $correlatedAccount = Invoke-RestMethod @splatGetUserParams
+    }
+    catch {
+        if ($_.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+        elseif ($_.Exception.GetType().FullName -eq 'System.Net.WebException' -and $null -ne $_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+            
+        # In case of a 404 (not found), no account was found
+        if ($statusCode -eq 404) {
+            Write-Information "CAPP12 account with accountReference: [$($actionContext.References.Account)] not found"
+            $correlatedAccount = $null
+        }
+        else {
+            throw
+        }
+    }
     if ($null -ne $correlatedAccount) {
-        $correlatedAccount.code = $actionContext.References.Account
-        $action = 'DisableAccount'
+        $action = 'DeleteAccount'
     }
     else {
         $action = 'NotFound'
     }
 
     # Process
-    Write-Information "[DryRun = $($actionContext.DryRun)]"
-    $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
     switch ($action) {
-        'DisableAccount' {
-            Write-Information "Disabling CAPP12 account with accountReference: [$($actionContext.References.Account)]"
-            $correlatedAccount | Add-Member @{
-                ends_on = "$((Get-Date).AddDays(-1).ToString('dd-MM-yyyy'))"
-            } -Force
-            $body = $correlatedAccount | Select-Object * -ExcludeProperty _extension | ConvertTo-Json
+        'DeleteAccount' {
+            Write-Information "Deleting CAPP12 account with accountReference: [$($actionContext.References.Account)]"
+            $endsOn = try {
+                $parsedEndsOn = [datetime]::ParseExact([string]$correlatedAccount.ends_on, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+                if ($parsedEndsOn.Date -gt (Get-Date).Date) {
+                    (Get-Date).AddDays(-1).ToString('dd-MM-yyyy')
+                }
+                else {
+                    $parsedEndsOn.ToString('dd-MM-yyyy')
+                }
+            }
+            catch { (Get-Date).AddDays(-1).ToString('dd-MM-yyyy') }
+            $body = @{
+                code       = $actionContext.References.Account
+                email      = $actionContext.Data.email
+                adfs_login = $actionContext.Data.adfs_login
+                ends_on    = $endsOn
+            } | ConvertTo-Json
 
             $splatWebRequest = @{
                 Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users"
                 Headers = $headers
                 Method  = 'POST'
-                Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
+                Body    = [System.Text.Encoding]::UTF8.GetBytes($body)
             }
 
             if (-not($actionContext.DryRun -eq $true)) {
                 $null = Invoke-RestMethod @splatWebRequest -Verbose:$false # Always 204
             }
-            $outputContext.data = $correlatedAccount
-
+            
             $outputContext.Success = $true
+            $outputContext.Data = $body | ConvertFrom-Json
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = 'Disable account was successful'
+                    Message = "Delete account [$($actionContext.References.Account)] was successful. Action initiated by: [$($actionContext.Origin)]"
                     IsError = $false
                 })
             break
         }
 
         'NotFound' {
-            Write-Information "Previous CAPP12 account values for: [$($personContext.Person.DisplayName)] not found, No Stored FieldMapping values"
+            Write-Information "CAPP12 account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted"
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "Could not disable Account  [$($actionContext.References.Account)], Previous CAPP12 account values for: [$($personContext.Person.DisplayName)] not found, No Stored FieldMapping values"
+                    Message = "CAPP12 account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted. Action initiated by: [$($actionContext.Origin)]"
                     IsError = $false
                 })
             break
@@ -152,15 +174,15 @@ catch {
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        $auditMessage = "Could not disable CAPP12 account. Error: $($errorObj.FriendlyMessage)"
+        $auditLogMessage = "Could not delete CAPP12 account. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        $auditMessage = "Could not disable CAPP12 account. Error: $($_.Exception.Message)"
+        $auditLogMessage = "Could not delete CAPP12 account. Error: $($_.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
-            Message = $auditMessage
+            Message = $auditLogMessage
             IsError = $true
         })
 }
