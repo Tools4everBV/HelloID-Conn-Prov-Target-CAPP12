@@ -77,45 +77,73 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    Write-Information "Creating [$($resourceContext.SourceData.Count)] Positions (before filtering)"
-    
-    # Only process unique results
-    $resourceData = $resourceContext.SourceData | Select-Object -Unique externalId, name
-    
-    Write-Information "Creating [$($resourceData.Count)] Positions"
+    # Temporarily filter departments with an ExternalId starting with 1111
+    $resourceContext.SourceData = $resourceContext.SourceData | Where-Object { $_.ExternalId -like "T4ETEST*"}
+
+    Write-Information "Creating [$($resourceContext.SourceData.Count)] positions"
     $outputContext.Success = $true
 
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
-    foreach ($resource in $resourceData) {
+    $getPositionsSplat = @{
+        Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/positions"
+        Headers = $headers
+        Method  = 'GET'
+    }
+    $existingPositions = Invoke-RestMethod @getPositionsSplat | ConvertFrom-Csv -Delimiter ';'
+    
+    foreach ($resource in $resourceContext.SourceData) {
         try {
-            if ([string]::IsNullOrEmpty($resource.externalId) -or [string]::IsNullOrEmpty($resource.name)) {
-                Write-Information "Could not create Position [$($resource.externalId), $($resource.name)]"
-                continue
-            }
             <# Resource creation preview uses a timeout of 30 seconds while actual run has timeout of 10 minutes #>
-            $body = [PSCustomObject]@{
-                code  = $resource.externalId
-                title = $resource.name
+
+            $existingPosition = $existingPositions | Where-Object { $_.code -eq $resource.ExternalId }
+            if ($existingPosition.Count -gt 1) {
+                Throw "Multiple existing positions found with code [$($resource.ExternalId)]."
             }
-            if ($actionContext.DryRun -eq $true) {
-                Write-Information "[DryRun] Create [$($body.Code) | $($body.title) ] CAPP12 Position, will be executed during enforcement"
+
+            if ($null -eq $existingPosition) {
+                $action = 'CreateResource'
+            }
+            elseif ($existingPosition.title -ne $resource.Name) {
+                $action = 'UpdateResource'
             }
             else {
-                $splatPositions = @{
-                    Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/positions"
-                    Headers = $headers
-                    Method  = 'POST'
-                    Body    = [System.Text.Encoding]::UTF8.GetBytes(( $body | ConvertTo-Json -Depth 10 ))
-                }
-                $null = Invoke-RestMethod @splatPositions
+                $action = 'NoChanges'
+            }
 
-                # We have disabled the audit logs because we need to re-execute all assignments with each HelloID run,
-                # as we cannot verify the existing objects in the target system.
-                # $outputContext.AuditLogs.Add([PSCustomObject]@{
-                #         Message = "Created Position: [$($body.Code) | $($body.title) ]"
-                #         IsError = $false
-                #     })
+            switch ($action) {
+                { $_ -in @('CreateResource', 'UpdateResource') } {
+                    $body = [PSCustomObject]@{
+                        code  = $resource.ExternalId
+                        title = $resource.Name
+                    }
+
+                    if (-not ($actionContext.DryRun -eq $True)) {
+                        Write-Information "$action`: [$($resource.ExternalId)] CAPP12 position"
+
+                        $splatPositions = @{
+                            Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/positions"
+                            Headers = $headers
+                            Method  = 'POST'
+                            Body    = [System.Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 10))
+                        }
+                        $null = Invoke-RestMethod @splatPositions
+                    }
+                    else {
+                        Write-Information "[DryRun] $action`: [$($resource.ExternalId)] CAPP12 position, will be executed during enforcement"
+                    }
+
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            Action  = $action
+                            Message = if ($action -eq 'UpdateResource') { "Updated position: [$($resource.ExternalId)]" } else { "Created position: [$($resource.ExternalId)]" }
+                            IsError = $false
+                        })
+                    break
+                }
+                'NoChanges' {
+                    Write-Information "Position [$($resource.ExternalId)] already exists with the same display name. No action needed."
+                    break
+                }
             }
         }
         catch {
@@ -124,15 +152,15 @@ try {
             if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
                 $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
                 $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-                $auditMessage = "Could not create CAPP12 Position. Error: $($errorObj.FriendlyMessage)"
+                $auditLogMessage = "Could not create or update CAPP12 position. Error: $($errorObj.FriendlyMessage)"
                 Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
             }
             else {
-                $auditMessage = "Could not create CAPP12 Position. Error: $($ex.Exception.Message)"
+                $auditLogMessage = "Could not create or update CAPP12 position. Error: $($ex.Exception.Message)"
                 Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
             }
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = $auditMessage
+                    Message = $auditLogMessage
                     IsError = $true
                 })
         }
@@ -144,15 +172,15 @@ catch {
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        $auditMessage = "Could not create CAPP12 Position. Error: $($errorObj.FriendlyMessage)"
+        $auditLogMessage = "Could not create or update CAPP12 position. Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        $auditMessage = "Could not create CAPP12 Position. Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Could not create or update CAPP12 position. Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
-            Message = $auditMessage
+            Message = $auditLogMessage
             IsError = $true
         })
 }
