@@ -104,31 +104,12 @@ try {
         }
 
         try {
-            $response = Invoke-RestMethod @splatGetUserParams
-            
-            # API should return JSON for single user. CSV means query params were ignored. Throw an error.
-            if ($response -is [string] -and $response -match ';') {
-                throw "API returned CSV response, indicating correlation is not configured correctly."
-            }
-            else {
-                $correlatedAccount = $response
-            }
+            $correlatedAccount = Invoke-RestMethod @splatGetUserParams
         }
         catch {
-            if ($_.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
-                $statusCode = [int]$_.Exception.Response.StatusCode
-            }
-            elseif ($_.Exception.GetType().FullName -eq 'System.Net.WebException' -and $null -ne $_.Exception.Response) {
-                $statusCode = [int]$_.Exception.Response.StatusCode
-            }
-            
-            # In case of a 404 (not found), no account was found
-            if ($statusCode -eq 404) {
-                Write-Information "No CAPP12 account found where $correlationField is: [$correlationValue]"
-                $correlatedAccount = $null
-            }
-            else {
-                throw
+            # 404 Indicates that the account is not Found!
+            if (-not $_.Exception.Response.StatusCode -eq 404) {
+                throw $_
             }
         }
     }

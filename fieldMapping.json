@@ -48,7 +48,7 @@
             "Disable"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function getAdfsLogin() {\\n    return Person.Accounts._72a25f5bcaf9498296fc2c7f55b06128.userPrincipalName\\n}\\n\\ngetAdfsLogin();\"",
+          "Value": "\"function getAdfsLogin() {\\n    return Person.Accounts.MicrosoftActiveDirectory.userPrincipalName\\n}\\n\\ngetAdfsLogin();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": true
         },
@@ -74,7 +74,7 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function getEmail() {\\r\\n    return Person.Accounts._72a25f5bcaf9498296fc2c7f55b06128.mail\\r\\n}\\r\\n\\r\\ngetEmail();\"",
+          "Value": "\"function getEmail() {\\r\\n    return Person.Accounts.MicrosoftActiveDirectory.mail\\r\\n}\\r\\n\\r\\ngetEmail();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         },

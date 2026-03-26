@@ -77,7 +77,7 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    # Temporarily filter departments with an ExternalId starting with OK
+    # TODO Temporarily filter departments with an ExternalId starting with OK
     $resourceContext.SourceData = $resourceContext.SourceData | Where-Object { $_.ExternalId -like "T4ETEST*" }
 
     Write-Information "Creating [$($resourceContext.SourceData.Count)] departments"
@@ -94,8 +94,6 @@ try {
 
     foreach ($resource in $resourceContext.SourceData) {
         try {
-            <# Resource creation preview uses a timeout of 30 seconds while actual run has timeout of 10 minutes #>
-
             $existingDepartment = $existingDepartments | Where-Object { $_.code -eq $resource.ExternalId }
             if ($existingDepartment.Count -gt 1) {
                 Throw "Multiple existing departments found with code [$($resource.ExternalId)]."
