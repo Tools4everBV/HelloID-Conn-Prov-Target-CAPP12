@@ -89,26 +89,17 @@ try {
         Headers = $headers
         Method  = 'GET'
     }
-    try {            
+    
+    try {
         $correlatedAccount = Invoke-RestMethod @splatGetUserParams
     }
     catch {
-        if ($_.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
-            $statusCode = [int]$_.Exception.Response.StatusCode
-        }
-        elseif ($_.Exception.GetType().FullName -eq 'System.Net.WebException' -and $null -ne $_.Exception.Response) {
-            $statusCode = [int]$_.Exception.Response.StatusCode
-        }
-            
-        # In case of a 404 (not found), no account was found
-        if ($statusCode -eq 404) {
-            Write-Information "CAPP12 account with accountReference: [$($actionContext.References.Account)] not found"
-            $correlatedAccount = $null
-        }
-        else {
-            throw
+        # 404 Indicates that the account is not Found!
+        if (-not $_.Exception.Response.StatusCode -eq 404) {
+            throw $_
         }
     }
+
     if ($null -ne $correlatedAccount) {
         $action = 'DeleteAccount'
     }

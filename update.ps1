@@ -87,31 +87,25 @@ try {
         Headers = $headers
         Method  = 'GET'
     }
-    try {            
+    
+    try {
         $correlatedAccount = Invoke-RestMethod @splatGetUserParams
     }
     catch {
-        if ($_.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
-            $statusCode = [int]$_.Exception.Response.StatusCode
-        }
-        elseif ($_.Exception.GetType().FullName -eq 'System.Net.WebException' -and $null -ne $_.Exception.Response) {
-            $statusCode = [int]$_.Exception.Response.StatusCode
-        }
-            
-        # In case of a 404 (not found), no account was found
-        if ($statusCode -eq 404) {
-            Write-Information "CAPP12 account with accountReference: [$($actionContext.References.Account)] not found"
-            $correlatedAccount = $null
-        }
-        else {
-            throw
+        # 404 Indicates that the account is not Found!
+        if (-not $_.Exception.Response.StatusCode -eq 404) {
+            throw $_
         }
     }
     $outputContext.PreviousData = $correlatedAccount
 
+    # If the account is inactive, we need to make sure the adfs_login is going to be updated.
+    if ($correlatedAccount.active -eq $false) {
+        $correlatedAccount | Add-Member -MemberType NoteProperty -Name 'adfs_login' -Value $null -Force
+    }
+
     # For all active accounts maintained by HelloID, we want the ends_on to be null making sure the account is active.
     $actionContext.Data | Add-Member -MemberType NoteProperty -Name 'ends_on' -Value $null -Force
-
     $actionContext.Data | Add-Member -MemberType NoteProperty -Name 'code' -Value $actionContext.References.Account -Force
 
     if ($null -ne $correlatedAccount) {
