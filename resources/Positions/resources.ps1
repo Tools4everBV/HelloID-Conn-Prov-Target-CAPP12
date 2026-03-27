@@ -77,9 +77,6 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    # TODO Temporarily filter departments with an ExternalId starting with 1111
-    $resourceContext.SourceData = $resourceContext.SourceData | Where-Object { $_.ExternalId -like "T4ETEST*"}
-
     Write-Information "Creating [$($resourceContext.SourceData.Count)] positions"
     $outputContext.Success = $true
 
