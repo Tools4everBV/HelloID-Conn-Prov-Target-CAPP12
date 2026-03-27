@@ -109,10 +109,8 @@ try {
     }
     $outputContext.PreviousData = $correlatedAccount
 
-    # Parse the existing ends_on value, because the API expects a different date format for updating accounts, than it returns when retrieving accounts. Omitting ends_on erases any existing value in CAPP12, which is not desired.
-    $correlatedAccount.ends_on = try { [datetime]::ParseExact([string]$correlatedAccount.ends_on, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture).ToString('dd-MM-yyyy') } catch { $null }
-    $endsOn = $correlatedAccount.ends_on
-    $actionContext.Data | Add-Member -MemberType NoteProperty -Name 'ends_on' -Value $endsOn -Force
+    # For all active accounts maintained by HelloID, we want the ends_on to be null making sure the account is active.
+    $actionContext.Data | Add-Member -MemberType NoteProperty -Name 'ends_on' -Value $null -Force
 
     $actionContext.Data | Add-Member -MemberType NoteProperty -Name 'code' -Value $actionContext.References.Account -Force
 

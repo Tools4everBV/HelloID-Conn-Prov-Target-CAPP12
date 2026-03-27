@@ -119,22 +119,13 @@ try {
     # Process
     switch ($action) {
         'DeleteAccount' {
-            Write-Information "Deleting CAPP12 account with accountReference: [$($actionContext.References.Account)]"
-            $endsOn = try {
-                $parsedEndsOn = [datetime]::ParseExact([string]$correlatedAccount.ends_on, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-                if ($parsedEndsOn.Date -gt (Get-Date).Date) {
-                    (Get-Date).AddDays(-1).ToString('dd-MM-yyyy')
-                }
-                else {
-                    $parsedEndsOn.ToString('dd-MM-yyyy')
-                }
-            }
-            catch { (Get-Date).AddDays(-1).ToString('dd-MM-yyyy') }
+            Write-Information "Disabling CAPP12 account with accountReference: [$($actionContext.References.Account)]"
+            
             $body = @{
                 code       = $actionContext.References.Account
                 email      = $actionContext.Data.email
                 adfs_login = $actionContext.Data.adfs_login
-                ends_on    = $endsOn
+                ends_on    = (Get-Date).AddDays(-1).ToString('dd-MM-yyyy')
             } | ConvertTo-Json
 
             $splatWebRequest = @{
@@ -151,7 +142,7 @@ try {
             $outputContext.Success = $true
             $outputContext.Data = $body | ConvertFrom-Json
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "Delete account [$($actionContext.References.Account)] was successful. Action initiated by: [$($actionContext.Origin)]"
+                    Message = "Delete account [$($actionContext.References.Account)] was successful. Account has been disabled. Action initiated by: [$($actionContext.Origin)]"
                     IsError = $false
                 })
             break

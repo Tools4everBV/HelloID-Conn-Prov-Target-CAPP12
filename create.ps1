@@ -128,8 +128,6 @@ try {
     
     switch ($action) {
         'CreateAccount' {
-            # Newly created accounts should start disabled until explicitly enabled.
-            $actionContext.Data | Add-Member -MemberType NoteProperty -Name 'ends_on' -Value (Get-Date).AddDays(-1).ToString('dd-MM-yyyy') -Force
             $body = $actionContext.Data | ConvertTo-Json
 
             $splatWebRequest = @{
