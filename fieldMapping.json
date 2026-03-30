@@ -3,7 +3,7 @@
   "MappingFields": [
     {
       "Name": "first_name",
-      "Description": "",
+      "Description": "Optional update field. Empty/null values keep existing data unchanged.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -20,7 +20,7 @@
     },
     {
       "Name": "last_name",
-      "Description": "",
+      "Description": "Optional update field. Empty/null values keep existing data unchanged.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -37,15 +37,13 @@
     },
     {
       "Name": "adfs_login",
-      "Description": "[Mandatory]",
+      "Description": "Mandatory for active accounts. Unique attribute. Not available for field comparison in account update. Cleared on delete to enable reuse.",
       "Type": "Text",
       "MappingActions": [
         {
           "MapForActions": [
             "Create",
-            "Enable",
-            "Update",
-            "Disable"
+            "Update"
           ],
           "MappingMode": "Complex",
           "Value": "\"function getAdfsLogin() {\\n    return Person.Accounts.MicrosoftActiveDirectory.userPrincipalName\\n}\\n\\ngetAdfsLogin();\"",
@@ -65,7 +63,7 @@
     },
     {
       "Name": "email",
-      "Description": "[Mandatory]",
+      "Description": "Mandatory for active accounts. Unique attribute. Cleared on delete to enable reuse.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -91,7 +89,7 @@
     },
     {
       "Name": "code",
-      "Description": "[Mandatory]",
+      "Description": "Primary account key. Required for creation and correlation. No updates possible.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -107,15 +105,13 @@
     },
     {
       "Name": "ends_on",
-      "Description": "The ends_on property is determined in the account life cycle scripts. The mapping should be None.",
+      "Description": "The ends_on property is determined in the account life cycle scripts: null for active accounts, yesterday for delete. The mapping should be None.",
       "Type": "Text",
       "MappingActions": [
         {
           "MapForActions": [
             "Create",
-            "Enable",
             "Update",
-            "Disable",
             "Delete"
           ],
           "MappingMode": "None",
