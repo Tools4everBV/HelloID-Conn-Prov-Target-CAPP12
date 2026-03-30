@@ -163,7 +163,7 @@ erDiagram
 - Bulk import data is not real-time and is typically current after nightly processing.
 - `adfs_login` is not available in bulk user data.
 - Account and permission import only supports active items (no end date, or a future end date).
-- Accounts with a missing `code` are filtered from the import, because they cannot be referenced or managed from HelloID. #TODO dit is nog niet definitief besloten en moet nog doorgevoerd worden in het import script.
+- Accounts with a missing `code` are filtered from the import, because they cannot be referenced or managed from HelloID.
 
 ## Development resources
 

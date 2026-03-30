@@ -115,31 +115,12 @@ try {
                 $userName = $code
             }
 
-            # Set Enabled based on ends_on value, if ends_on is empty or a date in the future, Enabled is true, otherwise false
-            $isEnabled = $false
-            $endsOn = $importedAccount.ends_on
-            if ([string]::IsNullOrEmpty($endsOn)) {
-                try {
-                    $endsOn = Invoke-RestMethod -Uri "$($actionContext.Configuration.BaseUrl)/api/v1/users?code=$($importedAccount.code)" -Headers $headers -Method 'GET' | Select-Object -ExpandProperty ends_on    
-                }
-                catch {
-                    $endsOn = $null
-                }
-            }
-            
-            if ([string]::IsNullOrEmpty($endsOn)) {
-                $isEnabled = $true
-            }
-            elseif ([datetime]::Parse($endsOn) -gt [datetime]::Now) {
-                $isEnabled = $true
-            }
-
             # Return the result
             Write-Output @{
                 AccountReference = $code
                 displayName      = $displayName
                 UserName         = $userName
-                Enabled          = $isEnabled
+                Enabled          = $false  # Always false since no enable and disable scripts are present.
                 Data             = $data
             }
         }
