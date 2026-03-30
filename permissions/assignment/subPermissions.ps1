@@ -83,7 +83,7 @@ function Resolve-CAPP12Error {
 
 # Begin
 try {
-    # Verify if [aRef] has a value
+    # Verify if [accountReference] has a value
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw 'The account reference could not be found'
     }

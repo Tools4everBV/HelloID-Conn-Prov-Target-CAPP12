@@ -115,10 +115,10 @@ try {
     }
     
     if (($correlatedAccount | Measure-Object).Count -eq 0) {
-        $action = 'CreateAccount'
+        $lifecycleProcess = 'CreateAccount'
     }
     elseif (($correlatedAccount | Measure-Object).Count -eq 1) {
-        $action = 'CorrelateAccount'
+        $lifecycleProcess = 'CorrelateAccount'
     }
     elseif (($correlatedAccount | Measure-Object).Count -gt 1) {
         throw "Multiple accounts found for person where $correlationField is: [$correlationValue]"
@@ -126,7 +126,7 @@ try {
 
     # Process
     
-    switch ($action) {
+    switch ($lifecycleProcess) {
         'CreateAccount' {
             $body = $actionContext.Data | ConvertTo-Json
 
@@ -138,14 +138,14 @@ try {
             }
             
             if (-not($actionContext.DryRun -eq $true)) {
-                Write-Information 'Creating CAPP12 account'
+                Write-Information 'Creating and correlating CAPP12 account'
                 $null = Invoke-RestMethod @splatWebRequest -Verbose:$false # Always 204
                 
                 $outputContext.Data = $body
                 $outputContext.AccountReference = $actionContext.Data.code
             }
             else {
-                Write-Information '[DryRun] Create CAPP12 account, will be executed during enforcement'
+                Write-Information '[DryRun] Create and correlate CAPP12 account, will be executed during enforcement'
             }
             $auditLogMessage = "Create account was successful. AccountReference is: [$($outputContext.AccountReference)]"
             break
@@ -162,7 +162,7 @@ try {
     }
     $outputContext.Success = $true
     $outputContext.AuditLogs.Add([PSCustomObject]@{
-            Action  = $action
+            Action  = $lifecycleProcess
             Message = $auditLogMessage
             IsError = $false
         })

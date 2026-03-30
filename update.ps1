@@ -75,7 +75,7 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    # Verify if [aRef] has a value
+    # Verify if [accountReference] has a value
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw 'The account reference could not be found'
     }
@@ -117,18 +117,18 @@ try {
             $_.SideIndicator -eq '=>' -and $correlatedAccount.PSObject.Properties.Name -contains $_.Name 
         }
         if ($propertiesChanged) {
-            $action = 'UpdateAccount'
+            $lifecycleProcess = 'UpdateAccount'
         }
         else {
-            $action = 'NoChanges'
+            $lifecycleProcess = 'NoChanges'
         }
     }
     else {
-        $action = 'NotFound'
+        $lifecycleProcess = 'NotFound'
     }
 
     # Process
-    switch ($action) {
+    switch ($lifecycleProcess) {
         'UpdateAccount' {
             Write-Information "Account property(s) required to update: $($propertiesChanged.Name -join ', ')"
             $body = $actionContext.Data | ConvertTo-Json

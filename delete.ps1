@@ -77,7 +77,7 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    # Verify if [aRef] has a value
+    # Verify if [accountReference] has a value
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw 'The account reference could not be found'
     }
@@ -101,35 +101,46 @@ try {
     }
 
     if ($null -ne $correlatedAccount) {
-        $action = 'DeleteAccount'
+        $lifecycleProcess = 'DeleteAccount'
     }
     else {
-        $action = 'NotFound'
+        $lifecycleProcess = 'NotFound'
     }
 
     # Process
-    switch ($action) {
+    switch ($lifecycleProcess) {
         'DeleteAccount' {
-            Write-Information "Disabling CAPP12 account with accountReference: [$($actionContext.References.Account)]"
-            
-            $body = @{
-                code       = $actionContext.References.Account
-                email      = $actionContext.Data.email
-                adfs_login = $actionContext.Data.adfs_login
-                ends_on    = (Get-Date).AddDays(-1).ToString('dd-MM-yyyy')
-            } | ConvertTo-Json
-
-            $splatWebRequest = @{
-                Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users"
-                Headers = $headers
-                Method  = 'POST'
-                Body    = [System.Text.Encoding]::UTF8.GetBytes($body)
-            }
-
             if (-not($actionContext.DryRun -eq $true)) {
+                Write-Information "Deleting {connectorName} account with accountReference: [$($actionContext.References.Account)]"
+
+                if ($actionContext.Origin -eq 'reconciliation') {
+                    $body = @{
+                        code       = $actionContext.References.Account
+                        email      = ""
+                        adfs_login = ""
+                        ends_on    = (Get-Date).AddDays(-1).ToString('dd-MM-yyyy')
+                    } | ConvertTo-Json
+                }
+                else {
+                    $body = @{
+                        code       = $actionContext.References.Account
+                        email      = $actionContext.Data.email
+                        adfs_login = $actionContext.Data.adfs_login
+                        ends_on    = (Get-Date).AddDays(-1).ToString('dd-MM-yyyy')
+                    } | ConvertTo-Json
+                }
+
+                $splatWebRequest = @{
+                    Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users"
+                    Headers = $headers
+                    Method  = 'POST'
+                    Body    = [System.Text.Encoding]::UTF8.GetBytes($body)
+                }
                 $null = Invoke-RestMethod @splatWebRequest -Verbose:$false # Always 204
             }
-            
+            else {
+                Write-Information "[DryRun] Delete {connectorName} account with accountReference: [$($actionContext.References.Account)], will be executed during enforcement"
+            }
             $outputContext.Success = $true
             $outputContext.Data = $body | ConvertFrom-Json
             $outputContext.AuditLogs.Add([PSCustomObject]@{
