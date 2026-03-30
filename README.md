@@ -13,175 +13,182 @@
 - [HelloID-Conn-Prov-Target-CAPP12](#helloid-conn-prov-target-capp12)
   - [Table of contents](#table-of-contents)
   - [Introduction](#introduction)
+  - [Supported features](#supported-features)
   - [Getting started](#getting-started)
-    - [Provisioning PowerShell V2 connector](#provisioning-powershell-v2-connector)
-      - [Correlation configuration](#correlation-configuration)
-      - [Field mapping](#field-mapping)
+    - [HelloID Icon URL](#helloid-icon-url)
+    - [Requirements](#requirements)
     - [Connection settings](#connection-settings)
-    - [Prerequisites](#prerequisites)
-    - [Remarks](#remarks)
-      - [No Get Calls available](#no-get-calls-available)
-      - [Assigning Position and Employment](#assigning-position-and-employment)
-      - [Delete account is not supported](#delete-account-is-not-supported)
-      - [Resource Script](#resource-script)
-        - [Department](#department)
-        - [Position](#position)
-        - [Department manager assignments](#department-manager-assignments)
+    - [Correlation configuration](#correlation-configuration)
+    - [Field mapping](#field-mapping)
+    - [Account reference](#account-reference)
+  - [Remarks](#remarks)
+    - [Domain relationship diagram](#domain-relationship-diagram)
+    - [Field mapping and uniqueness constraints](#field-mapping-and-uniqueness-constraints)
+    - [Account lifecycle behavior (`ends_on`, active/inactive)](#account-lifecycle-behavior-ends_on-activeinactive)
+    - [Resource synchronization behavior](#resource-synchronization-behavior)
+    - [Sub-permission processing](#sub-permission-processing)
+    - [Import limitations](#import-limitations)
+  - [Development resources](#development-resources)
+    - [API endpoints](#api-endpoints)
+    - [API documentation](#api-documentation)
   - [Getting help](#getting-help)
   - [HelloID docs](#helloid-docs)
 
 ## Introduction
 
-_HelloID-Conn-Prov-Target-CAPP12_ is a _target_ connector. _CAPP12_ provides a set of REST API's that allow you to programmatically interact with its data. The HelloID connector uses the API endpoints listed in the table below.
+_HelloID-Conn-Prov-Target-CAPP12_ is a _target_ connector. _CAPP12_ provides a set of REST APIs that allow you to programmatically interact with its data.
 
-| Endpoint            | Description                |
-| ------------------- | -------------------------- |
-| /oauth2/token       | Authenticate with the API  |
-| /api/v1/users       | User account Management    |
-| /api/v1/assignments | Grant Positions            |
-| /api/v1/employments | Grant Departments          |
-| /api/v1/managers    | Assign Department managers |
-| /api/v1/departments | Create/Update departments  |
-| /api/v1/positions   | Create/Update positions    |
+## Supported features
 
+The following features are available:
 
-The following lifecycle actions are available:
+| Feature                                   | Supported | Actions                 | Remarks |
+|-------------------------------------------|-----------|-------------------------|---------|
+| **Account Lifecycle**                     | ✅         | Create, Update, Delete  |         |
+| **Permissions**                           | ✅         | Retrieve, Grant, Revoke | Dynamic |
+| **Resources**                             | ✅         | Create, Update          |         |
+| **Entitlement Import: Accounts**          | ✅⚠️       | -                       |         |
+| **Entitlement Import: Permissions**       | ✅⚠️       | -                       |         |
+| **Governance Reconciliation Resolutions** | ✅⚠️       | -                       |         |
 
-| Action                                    | Description                                                                          |
-| ----------------------------------------- | ------------------------------------------------------------------------------------ |
-| create.ps1                                | PowerShell _create_ lifecycle action. For creating or correlating the CAPP12 account |
-| delete.ps1                                | PowerShell _disable_ lifecycle action. For disabling the CAPP12 account              |
-| update.ps1                                | PowerShell _update_ lifecycle action. For updating the CAPP12 account                |
-| resources/DepartmentManager/resources.ps1 | PowerShell _resources_ lifecycle action                                              |
-| resources/Departments/resources.ps1       | PowerShell _resources_ lifecycle action                                              |
-| resources/Position/resources.ps1          | PowerShell _resources_ lifecycle action                                              |
-| configuration.json                        | Default _configuration.json_                                                         |
-| fieldMapping.json                         | Default _fieldMapping.json_                                                          |
+### ⚠️ Account Lifecycle
+
+The CAPP12 API does not support account deletion so the delete script disables the account instead.
+
+### ⚠️ Entitlement Import: Accounts/Permissions
+
+Because of limitations in the API, only active accounts and permissions are imported.
+
+### ⚠️ Governance Reconciliation Resolutions
+
+Because of the absence of inactive accounts and permissions in the import, the reconciliation report can report those incorrectly as missing.
 
 ## Getting started
 
-### Provisioning PowerShell V2 connector
+### HelloID Icon URL
 
-#### Correlation configuration
+URL of the icon used for the HelloID Provisioning target system.
+```
+https://raw.githubusercontent.com/Tools4everBV/HelloID-Conn-Prov-Target-CAPP12/refs/heads/main/Icon.png
+```
 
-The correlation configuration is used to specify which properties will be used to match an existing account within _CAPP12_ to a person in _HelloID_. Since the CAPP12 API does not support the GET action, it cannot properly correlate the existing accounts. Instead, it always creates new users. In the background of CAPP12, it performs a Create or Update. Therefore, if the account already exists, it updates that account. The `Code` property is the correlation key.
+### Requirements
 
-To properly setup the correlation:
-
-1. Open the `Correlation` tab.
-
-2. Specify the following configuration:
-
-    | Setting                   | Value   |
-    | ------------------------- | ------- |
-    | Enable correlation        | `False` |
-    | Person correlation field  | `n/a`   |
-    | Account correlation field | `n/a`   |
-
-> [!TIP]
-> _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
-
-#### Field mapping
-
-The field mapping can be imported by using the _fieldMapping.json_ file.
+- Valid CAPP12 API credentials and base URL are required.
 
 ### Connection settings
 
 The following settings are required to connect to the API.
 
 | Setting      | Description                                             | Mandatory |
-| ------------ | ------------------------------------------------------- | --------- |
+|--------------|---------------------------------------------------------|-----------|
 | ClientId     | The ClientId to connect to the API                      | Yes       |
 | ClientSecret | The ClientSecret to connect to the API                  | Yes       |
-| BaseUrl      | The URL to the API (Example: https://defacto.capp12.nl) | Yes       |
+| BaseUrl      | The URL to the API (example: https://defacto.capp12.nl) | Yes       |
 
-### Prerequisites
- - HelloId Custom properties `CAPP12Department` and `CAPP12Manager`
- - Map the custom properties in the Source mapping.
- - Connection settings
- -
+### Correlation configuration
 
-### Remarks
+The correlation configuration is used to specify which properties will be used to match an existing account within _CAPP12_ to a person in _HelloID_.
 
-#### No Get Calls available
-There are no GET calls available in the CAPP12 API, so the connector has some differences compared to a default HelloID Connector.
-- To compare the previous account properties, the Departments, and the Positions, the 'STORE IN ACCOUNT DATA' option in HelloID is used to save all the applied values. Additionally, an extra mapping named _extension is introduced.
-- The _extension object contains two types of properties. One property, named SystemGuid, is used to look up the system in the account life cycle. The Positions and Departments properties are used to track assigned positions and departments.
-  - The `SystemGuid` must be unique in you HelloID environment!
-- All API actions are PUT-based.
-- The ends_on property is added to the fieldMapping to make sure the end date is saved during the account life cycle. The mapping should be `None`.
+| Setting                   | Value                             |
+|---------------------------|-----------------------------------|
+| Enable correlation        | `True`                            |
+| Person correlation field  | `PersonContext.Person.ExternalId` |
+| Account correlation field | `code`                            |
 
-> [!IMPORTANT]
-> After implementation, you should not change the `SystemGuid` field. Otherwise, the connector will no longer be able to update CAPP12."
+> [!TIP]
+> _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
 
-####  Assigning Position and Employment
-CAPP12 supports multiple positions and employments assigned to a single account. Since these are account properties, they are managed in the Create and Update scripts.
+### Field mapping
 
-- The Create.ps1 assumes that both Position and Employment are mandatory. Therefore, if the assignment of Positions or employments fails, the Create operation ends in an Error.
-- Positions and employments are calculated based on the contracts in conditions.
-- Assigned positions and employments are saved in the account data in _extension object.
-- Positions and employments are disabled after a previously assigned contract runs out of scope.
-- The `ends_on` property is now populated with `null` to enable a position or department. It may be necessary to provide a value! During development, verifying the outcome was impossible, meaning a date in the far future might be added to enable an account.
- - To manage the HelloID values used for assigning positions and employments, custom script properties in the Create and Update scripts handle the mapping.
-  ```Powershell
-  # Script Properties
-  $departmentLookupValue = { $_.Department.ExternalId }  # Employments
-  $positionLookupValue = { $_.Title.ExternalId }   # Assignments
-  ```
+The field mapping can be imported by using the _fieldMapping.json_ file.
 
-#### Delete account is not supported
+### Account reference
 
-The CAPP12 API does not support delete actions. This means that you will not be able to delete accounts.
+The account reference is populated with the `code` property from _CAPP12_
 
-#### Resource Script
-CAPP12 works with positions and departments that match names from HR. Therefore, the connector creates positions and departments in the resource script. There are three types of resource scripts recommended for a comprehensive implementation:
-- "Creating Departments"
-- "Creating Positions"
-- "Assigning Managers to Departments"
+## Remarks
 
-Because there is no GET method available, the resource scripts cannot compare existing resources and must always create or update all the resources.
-By default, we have **Disabled Audit Logging** in the resource scripts to prevent endless logging of resource creation.
+### Domain relationship diagram
 
-##### Department
-Uses `Department` object as input, and uses the `ExternalId` and the `DisplayName` to create departments
+The connector manages three resources and their relationships through dynamic permissions:
 
-![alt text](assets/departments.png)
+```mermaid
+erDiagram
+    POSITION ||--o{ ASSIGNMENT : ""
+    USER ||--o{ EMPLOYMENT : ""
+    DEPARTMENT ||--o{ EMPLOYMENT : ""
+
+    USER ||--o{ ASSIGNMENT : ""
+    USER ||--o{ MANAGER : ""
+    DEPARTMENT ||--o{ MANAGER : ""
+```
+
+**Resources:** USER, DEPARTMENT, POSITION  
+**Dynamic permissions:**
+- EMPLOYMENT: links user to department (employment relationship)
+- ASSIGNMENT: links user to position (position assignment)
+- MANAGER: defines which user has manager role for which department
 
 
-##### Position
-The resource script Position uses `Title` object as input, and uses the `ExternalId` and the `name` to create departments.
+### Field mapping and uniqueness constraints
 
-![alt text](assets/position.png)
+- `code` is the primary account key and is required for account creation.
+- `adfs_login` and `email` are unique attributes and should remain populated for active accounts.
+  - `adfs_login` is not available in the retrievable data, so field comparison is not possible during update. To prevent account deactivation, `adfs_login` is mapped explicitly in the update action.
+- `first_name` and `last_name` are optional update fields. When omitted, existing values remain unchanged.
+- `ends_on` is not mapped directly from field mapping and is controlled by lifecycle scripts.
+- The API uses different date formats between write (`dd-MM-yyyy`) and read (`yyyy-MM-dd`) operations.
 
+### Account lifecycle behavior (`ends_on`, active/inactive)
 
-##### Department manager assignments
-The resource script for assigning managers to departments uses the `Custom` object as input and the `CAPP12Department` and `CAPP12Manager` fields to assign managers to departments.
-- The department manager assignments require Custom fields in the source mapping, with the Department and the Manager combined. In our example, we created two Custom contract fields:`CAPP12Department`, and `CAPP12Manager`.
-  [More about Custom Fields](https://docs.helloid.com/en/provisioning/persons/person-schema/add-a-custom-person-or-contract-field.html)
-- Both fields should be mapped with the managers and departments in the Source mapping.
+- The connector applies disable semantics instead of hard delete.
+- Create and update actions keep accounts active by setting `ends_on` to `null`.
+- Delete sets `ends_on` to yesterday to inactivate the account.
+- In the delete mapping, `adfs_login` and `email` are configured with empty string values. This setup can be used to free unique values for reuse after inactivation.
+  - Validate this behavior with the customer before go-live, because it affects identity reuse policy.
 
-  ![alt text](assets/resouceConfiguration.png)
+### Resource synchronization behavior
 
-- In the configuration, you can manage the number of days a manager will remain active. The idea is that the resource is run each day, so the end date of the manager will be updated daily until the manager is no longer in that role and the end date runs out.
+- Resources are correlated by `code` based on their `ExternalId`. Name changes trigger updates.
 
+### Sub-permission processing
 
-> [!IMPORTANT]
-The mapping in the custom properties `CAPP12Department` and `CAPP12Manager` should correspond to the properties used for the Department in the resource script and the externalId of the accounts in CAPP12.
+- Grant actions set `ends_on` to `null`; revoke actions set `ends_on` to yesterday.
+- For inactive users, permissions cannot be managed afterwards, so permissions should be revoked before account inactivation.
+- The manager permission requires the custom field `ManagerOf` with a comma-separated list of department identifiers (e.g. `"Department1","Department2"`).
+
+### Import limitations
+
+- Bulk import data is not real-time and is typically current after nightly processing.
+- `adfs_login` is not available in bulk user data.
+- Account and permission import only supports active items (no end date, or a future end date).
+
+## Development resources
+
+### API endpoints
+
+The following endpoints are used by the connector.
+
+| Endpoint            | HTTP Method | Description                               |
+|---------------------|-------------|-------------------------------------------|
+| /oauth2/token       | POST        | Retrieve access token                     |
+| /api/v1/users       | GET, POST   | Import users and read account details     |
+| /api/v1/assignments | GET, POST   | Import and manage position assignments    |
+| /api/v1/employments | GET, POST   | Import and manage departments employments |
+| /api/v1/managers    | GET, POST   | Import and manage department managers     |
+| /api/v1/departments | GET, POST   | Create or update departments              |
+| /api/v1/positions   | GET, POST   | Create or update positions                |
+
+### API documentation
+
+- Supplier API documentation: [HR Import API](https://documenter.getpostman.com/view/17909805/UV5f6tSy#71de059f-e82f-4ce0-868c-b8d4673e53ea)
 
 ## Getting help
 
 > [!TIP]
 > _For more information on how to configure a HelloID PowerShell connector, please refer to our [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems.html) pages_.
 
-> [!TIP]
->  _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com/forum/helloid-connectors/provisioning/5148-helloid-conn-prov-target-capp12)_.
-
-> [!TIP]
-> _Supplier API documentation [HR Import API Postman Documenter ](https://documenter.getpostman.com/view/17909805/UV5f6tSy#71de059f-e82f-4ce0-868c-b8d4673e53ea)_
-
-
-
 ## HelloID docs
 
 The official HelloID documentation can be found at: https://docs.helloid.com/
-
