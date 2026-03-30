@@ -99,8 +99,8 @@ try {
             # Make sure the AccountReference has a value
             $code = $importedAccount.code
             if ([string]::IsNullOrEmpty($code)) {
-                # If code is empty, use a combination of MissingUserCode and a timestamp to ensure uniqueness, as AccountReference is required and must be unique for each account
-                $code = "MissingUserCode_$(Get-Date -Format 'yyyyMMddHHmmssfff')"
+                # If code is empty, skip this record as AccountReference is required for the import to work
+                continue
             }
 
             # Make sure the displayName has a value
