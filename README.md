@@ -133,7 +133,7 @@ erDiagram
 
 ### Field mapping and uniqueness constraints
 
-- `code` is the primary account key and is required for account creation.
+- `code` is the primary account key and is required for account creation. It cannot be updated via the API.
 - `adfs_login` and `email` are unique attributes and should remain populated for active accounts.
   - `adfs_login` is not available in the retrievable data, so field comparison is not possible during update. To prevent account deactivation, `adfs_login` is mapped explicitly in the update action.
 - `first_name` and `last_name` are optional update fields. When omitted, existing values remain unchanged.

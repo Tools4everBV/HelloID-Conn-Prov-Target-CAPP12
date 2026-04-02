@@ -92,26 +92,9 @@ try {
     }
 
     $importedPermissionsCsv = Invoke-RestMethod @splatImportPermissionParams
-    $unfilteredImportedPermissions = $importedPermissionsCsv | ConvertFrom-Csv -Delimiter ';'
-
-    $importedPermissions = $unfilteredImportedPermissions | Where-Object {
-        # Keep when ends_on is empty or a date in the future
-        if ([string]::IsNullOrEmpty($_.ends_on))
-        { $true }
-        else
-        { [datetime]::Parse($_.ends_on) -gt [datetime]::Now }
-    }
-
-    $splatImportDepartmentsParams = @{
-        Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/departments"
-        Headers = $headers
-        Method  = 'GET'
-    }
+    $importedPermissions = $importedPermissionsCsv | ConvertFrom-Csv -Delimiter ';'
 
     $groupedPermissions = $importedPermissions | Group-Object -Property department_code -AsHashTable
-
-    $importedDepartmentsCsv = Invoke-RestMethod @splatImportDepartmentsParams
-    $importedDepartments = $importedDepartmentsCsv | ConvertFrom-Csv -Delimiter ';'
 
     foreach ($importedPermission in $groupedPermissions.GetEnumerator()) {
         $permission = @{
@@ -124,7 +107,7 @@ try {
             SubPermissionReference   = @{
                 Id = $importedPermission.Key
             }
-            SubPermissionDisplayName = "$(($importedDepartments | Where-Object { $_.code -eq $importedPermission.Key }).title)"
+            SubPermissionDisplayName = $importedPermission.Key
         }
 
         # The code below splits a list of permission members into batches of 100

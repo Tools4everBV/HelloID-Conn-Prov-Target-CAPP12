@@ -119,7 +119,7 @@ try {
     # Process desired permissions to grant
     foreach ($permission in $desiredPermissions.GetEnumerator()) {
         $outputContext.SubPermissions.Add([PSCustomObject]@{
-                DisplayName = $permission.Value
+                DisplayName = "$($permission.Value) ($($permission.Name))" 
                 Reference   = [PSCustomObject]@{
                     Id = $permission.Name
                 }
@@ -144,7 +144,7 @@ try {
 
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     Action  = 'GrantPermission'
-                    Message = "Granted access to permission $($permission.Value)"
+                    Message = "Granted access to permission $($permission.Value) ($($permission.Name))"
                     IsError = $false
                 })
         }
@@ -172,7 +172,7 @@ try {
 
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     Action  = 'RevokePermission'
-                    Message = "Revoked access to permission $($permission.Value)"
+                    Message = "Revoked access to permission $($permission.Value) ($($permission.Name))"
                     IsError = $false
                 })
         }
@@ -202,7 +202,7 @@ try {
 
     #         $outputContext.AuditLogs.Add([PSCustomObject]@{
     #                 Action  = 'UpdatePermission'
-    #                 Message = "Updated access to permission $($permission.Value)"
+    #                 Message = "Updated access to permission $($permission.Value) ($($permission.Name))"
     #                 IsError = $false
     #             })
     #     }

@@ -124,7 +124,7 @@ try {
             SubPermissionReference   = @{
                 Id = $importedPermission.Key
             }
-            SubPermissionDisplayName = "$(($importedDepartments | Where-Object { $_.code -eq $importedPermission.Key }).title)"
+            SubPermissionDisplayName = "$(($importedDepartments | Where-Object { $_.code -eq $importedPermission.Key }).title) ($($importedPermission.Key))"
         }
 
         # The code below splits a list of permission members into batches of 100
