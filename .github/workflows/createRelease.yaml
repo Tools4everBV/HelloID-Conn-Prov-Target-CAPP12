@@ -1,0 +1,9 @@
+name: CreateRelease
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  create-release:
+    if: github.event.pull_request.merged == true
+    uses: Tools4everBV/.github/.github/workflows/createRelease.yaml@main

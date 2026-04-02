@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.0.0] - 02-04-2026
+
+### Major Update
+
+This release represents a significant upgrade leveraging the newly available GET API endpoints in CAPP12.
+
+### Added
+-   Account and permission import scripts for synchronizing entitlements from CAPP12
+-   Dynamic permission scripts for managing assignments, employments, and manager permissions (replacing static DepartmentManager resource and permissions in account create and update scripts)
+-   Entitlement Import support for both accounts and permissions
+-   Governance Reconciliation capabilities
+-   Enhanced field descriptions in fieldMapping.json
+-   GET API endpoints utilization for improved performance and data retrieval
+
+### Changed
+-   Refactored department and position creation logic to utilize GET endpoints for improved performance
+-   Updated field mapping and account lifecycle handling
+-   Redesigned permission architecture from static resource (DepartmentManager) to dynamic permission scripts
+
+### Removed
+-   DepartmentManager resource (replaced by the dynamic permission scripts for managers)
+
 ## [1.1.1] - 11-02-2025
 
 Fixes:

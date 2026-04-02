@@ -1,45 +1,34 @@
 [
   {
-    "key": "BaseUrl",
-    "type": "input",
     "defaultValue": "https://<customername>.capp12.nl",
+    "key": "BaseUrl",
     "templateOptions": {
+      "description": "BaseURL",
       "label": "CAPP12 API Baseurl",
       "placeholder": "CAPP12 API BaseURL",
-      "description": "BaseURL",
       "required": true
-    }
+    },
+    "type": "input"
   },
   {
-    "key": "ClientId",
-    "type": "input",
     "defaultValue": "",
+    "key": "ClientId",
     "templateOptions": {
       "label": "CAPP12 ClientId",
       "placeholder": "Please enter a ClientId",
       "required": true
-    }
+    },
+    "type": "input"
   },
   {
-    "key": "ClientSecret",
-    "type": "input",
     "defaultValue": "",
+    "key": "ClientSecret",
     "templateOptions": {
       "label": "CAPP12 ClientSecret",
-      "type": "password",
       "placeholder": "Please enter a Client Secret",
-      "required": true
-    }
-  },
-  {
-    "key": "ManagerAssignmentTimeOutInDays",
-    "type": "input",
-    "defaultValue": "3",
-    "templateOptions": {
-      "label": "Manager Assignment timeout in days",
-      "placeholder": "Please enter numbers of days",
-      "description": "This variable will be used in the resource script to define the time after which a manager becomes inactive in a department once they are no longer assigned as the manager. (More information can be found in the README.)",
-      "required": true
-    }
+      "required": true,
+      "type": "password"
+    },
+    "type": "input"
   }
 ]
