@@ -77,7 +77,7 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    Write-Information "Creating [$($resourceContext.SourceData.Count)] positions"
+    Write-Information "Processing [$(($resourceContext.SourceData | Measure-Object).Count)] position resources"
     $outputContext.Success = $true
 
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders

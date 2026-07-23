@@ -77,7 +77,7 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    Write-Information "Creating [$($resourceContext.SourceData.Count)] departments"
+    Write-Information "Processing [$(($resourceContext.SourceData | Measure-Object).Count)] department resources"
     $outputContext.Success = $true
 
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
@@ -92,7 +92,7 @@ try {
     foreach ($resource in $resourceContext.SourceData) {
         try {
             $existingDepartment = $existingDepartments | Where-Object { $_.code -eq $resource.ExternalId }
-            if ($existingDepartment.Count -gt 1) {
+            if (($existingDepartment | Measure-Object).Count -gt 1) {
                 Throw "Multiple existing departments found with code [$($resource.ExternalId)]."
             }
 
