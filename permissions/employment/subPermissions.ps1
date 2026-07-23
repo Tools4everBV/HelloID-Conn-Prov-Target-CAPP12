@@ -287,6 +287,11 @@ try {
     #             })
     #     }
     # }
+
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if (-NOT($outputContext.AuditLogs.IsError -contains $true)) {
+        $outputContext.Success = $true
+    }
 }
 catch {
     $outputContext.Success = $false
@@ -307,10 +312,4 @@ catch {
             Message = $auditLogMessage
             IsError = $true
         })
-}
-finally {
-    # Check if auditLogs contains errors, if no errors are found, set success to true
-    if (-NOT($outputContext.AuditLogs.IsError -contains $true)) {
-        $outputContext.Success = $true
-    }
 }
