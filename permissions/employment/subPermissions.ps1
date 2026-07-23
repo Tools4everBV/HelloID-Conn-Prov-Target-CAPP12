@@ -57,7 +57,6 @@ function Resolve-CAPP12Error {
             Line             = $ErrorObject.InvocationInfo.Line
             ErrorDetails     = $ErrorObject.Exception.Message
             FriendlyMessage  = $ErrorObject.Exception.Message
-            ErrorCode        = $null
         }
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
@@ -74,9 +73,6 @@ function Resolve-CAPP12Error {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
             if ($null -ne $errorDetailsObject.error) {
                 $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
-            }
-            if ($null -ne $errorDetailsObject.error_code) {
-                $httpErrorObj.ErrorCode = $errorDetailsObject.error_code
             }
         }
         catch {
