@@ -66,7 +66,9 @@ function Resolve-CAPP12Error {
         }
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
-            $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            if ($null -ne $errorDetailsObject.error) {
+                $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            }
         }
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
@@ -79,9 +81,12 @@ function Resolve-CAPP12Error {
 try {
     # Initial Assignments
     $outputContext.AccountReference = 'Currently not available'
+
+    $actionMessage = 'creating access token'
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
     # Validate correlation configuration
+    $actionMessage = 'validating correlation configuration'
     if ($actionContext.CorrelationConfiguration.Enabled) {
         $correlationField = $actionContext.CorrelationConfiguration.AccountField
         $correlationValue = $actionContext.CorrelationConfiguration.PersonFieldValue
@@ -94,7 +99,7 @@ try {
         }
 
         # Determine if a user needs to be [created] or [correlated]
-        Write-Information "Verifying if a CAPP12 account exists where $correlationField is: [$correlationValue]"
+        $actionMessage = 'querying account'
 
         # Retrieve user details using an API call and store the result in $correlatedAccount
         $splatGetUserParams = @{
@@ -114,6 +119,8 @@ try {
         }
     }
     
+    # Determine actions
+    $actionMessage = 'determining actions'
     if (($correlatedAccount | Measure-Object).Count -eq 0) {
         $lifecycleProcess = 'CreateAccount'
     }
@@ -125,9 +132,9 @@ try {
     }
 
     # Process
-    
     switch ($lifecycleProcess) {
         'CreateAccount' {
+            $actionMessage = "creating account with code [$($actionContext.Data.code)]"
             $body = $actionContext.Data | ConvertTo-Json
 
             $splatWebRequest = @{
@@ -138,7 +145,6 @@ try {
             }
             
             if (-not($actionContext.DryRun -eq $true)) {
-                Write-Information 'Creating and correlating CAPP12 account'
                 $null = Invoke-RestMethod @splatWebRequest -Verbose:$false # Always 204
                 
                 $outputContext.Data = $body
@@ -151,7 +157,7 @@ try {
             break
         }
         'CorrelateAccount' {
-            Write-Information 'Correlating CAPP12 account'
+            $actionMessage = "correlating account: [$($correlatedAccount.code)] on field: [$($correlationField)] with value: [$($correlationValue)]"
             
             $outputContext.Data = $correlatedAccount
             $outputContext.AccountReference = $correlatedAccount.code
@@ -160,7 +166,12 @@ try {
             break
         }
     }
-    $outputContext.Success = $true
+
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if (-NOT($outputContext.AuditLogs.IsError -contains $true)) {
+        $outputContext.Success = $true
+    }
+
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             Action  = $lifecycleProcess
             Message = $auditLogMessage
@@ -168,18 +179,18 @@ try {
         })
 }
 catch {
-    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        $auditLogMessage = "Could not create or correlate CAPP12 account. Error: $($errorObj.FriendlyMessage)"
-        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        $auditLogMessage = "Could not create or correlate CAPP12 account. Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
+    Write-Warning $warningMessage
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             Message = $auditLogMessage
             IsError = $true
