@@ -57,7 +57,6 @@ function Resolve-CAPP12Error {
             Line             = $ErrorObject.InvocationInfo.Line
             ErrorDetails     = $ErrorObject.Exception.Message
             FriendlyMessage  = $ErrorObject.Exception.Message
-            ErrorCode        = $null
         }
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
@@ -74,9 +73,6 @@ function Resolve-CAPP12Error {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
             if ($null -ne $errorDetailsObject.error) {
                 $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
-            }
-            if ($null -ne $errorDetailsObject.error_code) {
-                $httpErrorObj.ErrorCode = $errorDetailsObject.error_code
             }
         }
         catch {
@@ -243,16 +239,7 @@ try {
             }
             
             # Check if the error is because user or position doesn't exist (already revoked)
-            # Check on error code first (more reliable), fallback to message text
-            $isNotFoundError = $false
-            if ($null -ne $errorObj.ErrorCode -and $errorObj.ErrorCode -eq 'NOT_FOUND') {
-                $isNotFoundError = $true
-            }
-            elseif ($auditMessage -like "*Can't find user with code*" -or $auditMessage -like "*position with code*") {
-                $isNotFoundError = $true
-            }
-            
-            if ($isNotFoundError) {
+            if ($auditMessage -like "*Can't find user with code*" -or $auditMessage -like "*position with code*") {
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         Action  = 'RevokePermission'
                         Message = "Skipped revoking assignment position [$($permission.Value) ($($permission.Name))] for user [$($actionContext.References.Account)]. Reason: User or position no longer exists (assignment already revoked)."
