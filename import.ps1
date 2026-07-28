@@ -66,7 +66,9 @@ function Resolve-CAPP12Error {
         }
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
-            $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            if ($null -ne $errorDetailsObject.error) {
+                $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            }
         }
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
@@ -77,9 +79,12 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
+    Write-Information 'Starting account entitlement import'
+
+    $actionMessage = 'creating access token'
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
-    Write-Information 'Starting CAPP12 account entitlement import'
+    $actionMessage = 'querying users'
 
     $splatImportAccountParams = @{
         Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users"
@@ -88,8 +93,13 @@ try {
     }
     $responseCsv = Invoke-RestMethod @splatImportAccountParams
     $response = $responseCsv | ConvertFrom-Csv -Delimiter ';'
+    Write-Information "Queried users. Result count: $($response.Count)"
+
+    $actionMessage = 'importing accounts to HelloID'
+    $importedAccountsCount = 0
     if ($response) {
         foreach ($importedAccount in $response) {
+            $actionMessage = "importing account [$($importedAccount.code)] to HelloID"
             # Making sure only fieldMapping fields are imported
             $data = @{}
             foreach ($field in $actionContext.ImportFields) {
@@ -123,20 +133,23 @@ try {
                 Enabled          = $false  # Always false since no enable and disable scripts are present.
                 Data             = $data
             }
+            $importedAccountsCount++
         }
-        Write-Information 'CAPP12 account entitlement import completed'
     }
+    Write-Information "Account entitlement import completed. Result count: $($importedAccountsCount)"
 }
 catch {
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-        Write-Error "Could not import CAPP12 account entitlements. Error: $($errorObj.FriendlyMessage)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-        Write-Error "Could not import CAPP12 account entitlements. Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
+    Write-Warning $warningMessage
+    Write-Error $auditLogMessage
 }
