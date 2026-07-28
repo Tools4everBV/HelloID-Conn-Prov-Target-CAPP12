@@ -191,6 +191,11 @@ catch {
         $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     Write-Warning $warningMessage
+
+    # If the error is about duplicate email, append $auditLogMessage with the email address we tried to update
+    if ($errorObj.FriendlyMessage -like "*email already exists*") {
+        $auditLogMessage += ". Email address that was attempted to be updated: [$($actionContext.Data.email)]"
+    }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             Message = $auditLogMessage
             IsError = $true

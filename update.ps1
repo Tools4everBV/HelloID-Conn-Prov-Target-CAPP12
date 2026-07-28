@@ -190,19 +190,18 @@ catch {
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
         $auditLogMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
-        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-        
-        # If the error is about duplicate email, add extra warning with the email address we tried to update
-        if ($errorObj.FriendlyMessage -like "*email already exists*") {
-            Write-Warning "Email address that was attempted to be updated: [$($actionContext.Data.email)]"
-        }
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"z 
     }
     else {
         $auditLogMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
         $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     Write-Warning $warningMessage
-    
+
+    # If the error is about duplicate email, append $auditLogMessage with the email address we tried to update
+    if ($errorObj.FriendlyMessage -like "*email already exists*") {
+        $auditLogMessage += ". Email address that was attempted to be updated: [$($actionContext.Data.email)]"
+    }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             Message = $auditLogMessage
             IsError = $true
