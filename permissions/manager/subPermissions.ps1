@@ -108,21 +108,6 @@ try {
         $currentPermissions[$permission.Reference.Id] = $permission.DisplayName
     }
 
-    #region Custom - 2026/03/25 - RS - Changed to use contracts instead of person level primary lookup key to determine permissions to grant
-    # # Collect desired permissions
-    # $desiredPermissions = @{}
-    # if (-not($actionContext.Operation -eq 'revoke')) {
-    #     $primaryKeys = (($personContext.Person | ForEach-Object $PrimaryLookupKey) -split ',').Trim('"') | Where-Object { -not [string]::IsNullOrEmpty($_) }
-
-    #     if (($actionContext.Operation -in @('grant', 'update')) -and ($primaryKeys.Count -eq 0 )) {
-    #         throw "No departments found for which this person is a manager in person data. Grant/update permission should not be started for this person."
-    #     }
-
-    #     foreach ($primaryKey in $primaryKeys) {
-    #         $desiredPermissions[$primaryKey] = $primaryKey
-    #     }
-    # }
-
     # Collect desired permissions
     $desiredPermissions = @{}
     if (-not($actionContext.Operation -eq 'revoke')) {
