@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.0.1] - 28-07-2026
+
+### Fixed
+-   Removed finally blocks used for business logic (success determination now at end of try block)
+-   Improved error handling with consistent $actionMessage context tracking across all scripts
+-   Enhanced error reporting with $warningMessage variable to prevent duplicate Write-Warning statements
+-   Added null check in Resolve-CAPP12Error function: `if ($null -ne $errorDetailsObject.error)`
+-   Standardized "not found" error detection in permission revoke operations
+
+### Changed
+-   Minimized Write-Information statements (retained only for DryRun messages and essential logging)
+-   Added result count logging to import scripts for better visibility
+-   Improved error messages with contextual $actionMessage at each processing step
+
 ## [2.0.0] - 02-04-2026
 
 ### Major Update
