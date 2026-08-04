@@ -112,7 +112,7 @@ try {
     $desiredPermissions = @{}
     if (-not($actionContext.Operation -eq 'revoke')) {
         foreach ($contract in $personContext.Person.Contracts) {
-            if ($contract.Context.InConditions -or ($actionContext.DryRun -eq $true)) {
+            if ($contract.Context.InConditions) {
                 $primaryKeys = (($contract | ForEach-Object $PrimaryLookupKey) -split ',').Trim('"') | Where-Object { -not [string]::IsNullOrEmpty($_) }
                 foreach ($primaryKey in $primaryKeys) {
                     $desiredPermissions[$primaryKey] = $primaryKey
@@ -120,7 +120,6 @@ try {
             }
         }
     }
-    #endregion Custom - 2026/04/16 - RS - Changed to use contracts instead of person level primary lookup key to determine permissions to grant
 
     if (($actionContext.Operation -in @('grant', 'update')) -and ($desiredPermissions.Count -eq 0 )) {
         throw "No departments found for which this person is a manager in person data. Grant/update permission should not be started for this person."

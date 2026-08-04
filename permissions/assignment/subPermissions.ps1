@@ -113,7 +113,7 @@ try {
     $desiredPermissions = @{}
     if (-not($actionContext.Operation -eq 'revoke')) {
         foreach ($contract in $personContext.Person.Contracts) {
-            if ($contract.Context.InConditions -or ($actionContext.DryRun -eq $true)) {
+            if ($contract.Context.InConditions) {
                 $primaryKey = $contract | ForEach-Object $PrimaryLookupKey
                 $secondaryValue = $contract | ForEach-Object $SecondaryLookupKey
                 $desiredPermissions[$primaryKey] = $secondaryValue
