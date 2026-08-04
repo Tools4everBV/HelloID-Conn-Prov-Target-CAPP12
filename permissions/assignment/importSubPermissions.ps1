@@ -70,7 +70,9 @@ function Resolve-CAPP12Error {
         }
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
-            $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            if ($null -ne $errorDetailsObject.error) {
+                $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            }
         }
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
@@ -81,9 +83,12 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    Write-Information 'Starting CAPP12 permission entitlement import'
+    Write-Information 'Starting import of assignment sub-permission entitlements'
 
+    $actionMessage = 'creating access token'
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
+
+    $actionMessage = 'querying assignment permissions'
 
     $splatImportPermissionParams = @{
         Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/assignments"
@@ -93,6 +98,9 @@ try {
 
     $importedPermissionsCsv = Invoke-RestMethod @splatImportPermissionParams
     $unfilteredImportedPermissions = $importedPermissionsCsv | ConvertFrom-Csv -Delimiter ';'
+    Write-Information "Queried assignment permissions. Result count: $($unfilteredImportedPermissions.Count)"
+
+    $actionMessage = 'filtering assignment permissions'
 
     $importedPermissions = $unfilteredImportedPermissions | Where-Object {
         # Keep when ends_on is empty or a date in the future
@@ -113,6 +121,8 @@ try {
     $importedPositionsCsv = Invoke-RestMethod @splatImportPositionsParams
     $importedPositions = $importedPositionsCsv | ConvertFrom-Csv -Delimiter ';'
 
+    $actionMessage = 'importing assignment sub-permission entitlements to HelloID'
+    $importedSubPermissions = 0
     foreach ($importedPermission in $groupedPermissions.GetEnumerator()) {
         $permission = @{
             PermissionReference      = @{
@@ -135,20 +145,23 @@ try {
         for ($i = 0; $i -lt $members.Count; $i += $batchSize) {
             $permission.AccountReferences = $members[$i..([Math]::Min($i + $batchSize - 1, $members.Count - 1))]
             Write-Output $permission
+            $importedSubPermissions++
         }
     }
-    Write-Information 'CAPP12 permission entitlement import completed'
+    Write-Information "Assignment sub-permission entitlements import completed. Result count: $($importedSubPermissions)"
 }
 catch {
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-        Write-Error "Could not import CAPP12 permission entitlements. Error: $($errorObj.FriendlyMessage)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-        Write-Error "Could not import CAPP12 permission entitlements. Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
+    Write-Warning $warningMessage
+    Write-Error $auditLogMessage
 }

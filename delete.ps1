@@ -66,7 +66,9 @@ function Resolve-CAPP12Error {
         }
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
-            $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            if ($null -ne $errorDetailsObject.error) {
+                $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            }
         }
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
@@ -81,9 +83,11 @@ try {
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw 'The account reference could not be found'
     }
+
+    $actionMessage = 'creating access token'
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
-    Write-Information "Verifying if a CAPP12 account exists"
+    $actionMessage = 'querying account'
     $splatGetUserParams = @{
         Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users?code=$($actionContext.References.Account)"
         Headers = $headers
@@ -100,6 +104,8 @@ try {
         }
     }
 
+    # Determine actions
+    $actionMessage = 'determining actions'
     if ($null -ne $correlatedAccount) {
         $lifecycleProcess = 'DeleteAccount'
     }
@@ -110,8 +116,8 @@ try {
     # Process
     switch ($lifecycleProcess) {
         'DeleteAccount' {
+            $actionMessage = "deleting account with accountReference: [$($actionContext.References.Account)]"
             if (-not($actionContext.DryRun -eq $true)) {
-                Write-Information "Deleting {connectorName} account with accountReference: [$($actionContext.References.Account)]"
 
                 if ($actionContext.Origin -eq 'reconciliation') {
                     $body = @{
@@ -141,7 +147,6 @@ try {
             else {
                 Write-Information "[DryRun] Delete {connectorName} account with accountReference: [$($actionContext.References.Account)], will be executed during enforcement"
             }
-            $outputContext.Success = $true
             $outputContext.Data = $body | ConvertFrom-Json
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     Message = "Delete account [$($actionContext.References.Account)] was successful. Account has been disabled. Action initiated by: [$($actionContext.Origin)]"
@@ -151,8 +156,7 @@ try {
         }
 
         'NotFound' {
-            Write-Information "CAPP12 account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted"
-            $outputContext.Success = $true
+            $actionMessage = "deleting account with accountReference: [$($actionContext.References.Account)]"
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     Message = "CAPP12 account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted. Action initiated by: [$($actionContext.Origin)]"
                     IsError = $false
@@ -160,20 +164,25 @@ try {
             break
         }
     }
+
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if (-NOT($outputContext.AuditLogs.IsError -contains $true)) {
+        $outputContext.Success = $true
+    }
 }
 catch {
-    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        $auditLogMessage = "Could not delete CAPP12 account. Error: $($errorObj.FriendlyMessage)"
-        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        $auditLogMessage = "Could not delete CAPP12 account. Error: $($_.Exception.Message)"
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
+    Write-Warning $warningMessage
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             Message = $auditLogMessage
             IsError = $true

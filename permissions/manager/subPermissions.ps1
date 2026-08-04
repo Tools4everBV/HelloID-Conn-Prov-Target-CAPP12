@@ -9,7 +9,6 @@
 # Script Mapping lookup values
 # Lookup values which are used in the mapping to determine the subPermissions
 $PrimaryLookupKey = { $_.Custom.ManagerOf } # Mandatory
-# $SecondaryLookupKey = { $_.Department.DisplayName } # Mandatory
 
 #region functions
 function Get-Capp12AuthorizationTokenAndCreateHeaders {
@@ -71,7 +70,9 @@ function Resolve-CAPP12Error {
         }
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
-            $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            if ($null -ne $errorDetailsObject.error) {
+                $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            }
         }
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
@@ -88,8 +89,10 @@ try {
         throw 'The account reference could not be found'
     }
 
+    $actionMessage = 'creating access token'
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
+    $actionMessage = 'verifying if a CAPP12 account exists'
     Write-Information "Verifying if a CAPP12 account exists"
     $splatGetUserParams = @{
         Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users?code=$($actionContext.References.Account)"
@@ -98,6 +101,7 @@ try {
     }
     $null = Invoke-RestMethod @splatGetUserParams
 
+    $actionMessage = 'collecting current and desired permissions'
     # Collect current permissions
     $currentPermissions = @{}
     foreach ($permission in $actionContext.CurrentPermissions) {
@@ -107,79 +111,154 @@ try {
     # Collect desired permissions
     $desiredPermissions = @{}
     if (-not($actionContext.Operation -eq 'revoke')) {
-        $primaryKeys = (($personContext.Person | ForEach-Object $PrimaryLookupKey) -split ',').Trim('"') | Where-Object { -not [string]::IsNullOrEmpty($_) }
-
-        if (($actionContext.Operation -in @('grant', 'update')) -and ($primaryKeys.Count -eq 0 )) {
-            throw "No departments found for which this person is a manager in person data. Grant/update permission should not be started for this person."
-        }
-
-        foreach ($primaryKey in $primaryKeys) {
-            $desiredPermissions[$primaryKey] = $primaryKey
+        foreach ($contract in $personContext.Person.Contracts) {
+            if ($contract.Context.InConditions) {
+                $primaryKeys = (($contract | ForEach-Object $PrimaryLookupKey) -split ',').Trim('"') | Where-Object { -not [string]::IsNullOrEmpty($_) }
+                foreach ($primaryKey in $primaryKeys) {
+                    $desiredPermissions[$primaryKey] = $primaryKey
+                }
+            }
         }
     }
 
+    if (($actionContext.Operation -in @('grant', 'update')) -and ($desiredPermissions.Count -eq 0 )) {
+        throw "No departments found for which this person is a manager in person data. Grant/update permission should not be started for this person."
+    }
+
+    Write-Information ("Desired Permissions: {0}" -f ($desiredPermissions.Values | ConvertTo-Json))
+    Write-Information ("Existing Permissions: {0}" -f ($actionContext.CurrentPermissions.DisplayName | ConvertTo-Json))
+
+    $actionMessage = "granting manager departments to account [$($actionContext.References.Account)]"
     # Process desired permissions to grant
     foreach ($permission in $desiredPermissions.GetEnumerator()) {
-        $outputContext.SubPermissions.Add([PSCustomObject]@{
-                DisplayName = $permission.Value
-                Reference   = [PSCustomObject]@{
-                    Id = $permission.Name
+        # try catch within the loop to handle errors for each permission
+        try {
+            $outputContext.SubPermissions.Add([PSCustomObject]@{
+                    DisplayName = $permission.Value
+                    Reference   = [PSCustomObject]@{
+                        Id = $permission.Name
+                    }
+                })
+
+            if (-not $currentPermissions.ContainsKey($permission.Name)) {
+                $actionMessage = "granting manager department [$($permission.Value)] to account with AccountReference: [$($actionContext.References.Account)]"
+                
+                $body = [PSCustomObject]@{
+                    user_code       = $actionContext.References.Account
+                    department_code = $permission.Key
+                    ends_on         = $null
+                } | ConvertTo-Json -Depth 10
+
+                $splatWebRequest = @{
+                    Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/managers"
+                    Headers = $headers
+                    Method  = 'POST'
+                    Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
                 }
-            })
-
-        if (-not $currentPermissions.ContainsKey($permission.Name)) {
-            $body = [PSCustomObject]@{
-                user_code       = $actionContext.References.Account
-                department_code = $permission.Key
-                ends_on         = $null
-            } | ConvertTo-Json -Depth 10
-
-            $splatWebRequest = @{
-                Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/managers"
-                Headers = $headers
-                Method  = 'POST'
-                Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
+                if (-not($actionContext.DryRun -eq $true)) {
+                    $null = Invoke-RestMethod @splatWebRequest -Verbose:$false
+                    
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            Action  = 'GrantPermission'
+                            Message = "Granted manager department [$($permission.Value)] to account with AccountReference: [$($actionContext.References.Account)]"
+                            IsError = $false
+                        })
+                }
+                else {
+                    Write-Information "[DryRun] Would grant manager department [$($permission.Value)] to account with AccountReference: [$($actionContext.References.Account)]"
+                }
             }
-            if (-not($actionContext.DryRun -eq $true)) {
-                $null = Invoke-RestMethod @splatWebRequest -Verbose:$false
+        }
+        catch {
+            $ex = $PSItem
+            if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+                $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+                $errorObj = Resolve-CAPP12Error -ErrorObject $ex
+                $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+                $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
             }
-
+            else {
+                $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+                $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+            }
+            Write-Warning $warningMessage
+            
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     Action  = 'GrantPermission'
-                    Message = "Granted access to permission $($permission.Value)"
-                    IsError = $false
+                    Message = $auditMessage
+                    IsError = $true
                 })
         }
     }
 
+    $actionMessage = "revoking manager departments from account [$($actionContext.References.Account)]"
     # Process current permissions to revoke
     $newCurrentPermissions = @{}
     foreach ($permission in $currentPermissions.GetEnumerator()) {
-        if (-not $desiredPermissions.ContainsKey($permission.Name)) {
-            $body = [PSCustomObject]@{
-                user_code       = $actionContext.References.Account
-                department_code = $permission.Key
-                ends_on         = (Get-Date).AddDays(-1).ToString('dd-MM-yyyy')
-            } | ConvertTo-Json -Depth 10
+        # try catch within the loop to handle errors for each permission
+        try {
+            if (-not $desiredPermissions.ContainsKey($permission.Name)) {
+                $actionMessage = "revoking manager department [$($permission.Value)] from account with AccountReference: [$($actionContext.References.Account)]"
+                
+                $body = [PSCustomObject]@{
+                    user_code       = $actionContext.References.Account
+                    department_code = $permission.Key
+                    ends_on         = (Get-Date).AddDays(-1).ToString('dd-MM-yyyy')
+                } | ConvertTo-Json -Depth 10
 
-            $splatWebRequest = @{
-                Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/managers"
-                Headers = $headers
-                Method  = 'POST'
-                Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
+                $splatWebRequest = @{
+                    Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/managers"
+                    Headers = $headers
+                    Method  = 'POST'
+                    Body    = ([System.Text.Encoding]::UTF8.GetBytes($body))
+                }
+                if (-not($actionContext.DryRun -eq $true)) {
+                    $null = Invoke-RestMethod @splatWebRequest -Verbose:$false
+                    
+                    $outputContext.AuditLogs.Add([PSCustomObject]@{
+                            Action  = 'RevokePermission'
+                            Message = "Revoked manager department [$($permission.Value)] from account with AccountReference: [$($actionContext.References.Account)]"
+                            IsError = $false
+                        })
+                }
+                else {
+                    Write-Information "[DryRun] Would revoke manager department [$($permission.Value)] from account with AccountReference: [$($actionContext.References.Account)]"
+                }
             }
-            if (-not($actionContext.DryRun -eq $true)) {
-                $null = Invoke-RestMethod @splatWebRequest -Verbose:$false
+            else {
+                $newCurrentPermissions[$permission.Name] = $permission.Value
             }
-
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Action  = 'RevokePermission'
-                    Message = "Revoked access to permission $($permission.Value)"
-                    IsError = $false
-                })
         }
-        else {
-            $newCurrentPermissions[$permission.Name] = $permission.Value
+        catch {
+            $ex = $PSItem
+            if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+                $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+                $errorObj = Resolve-CAPP12Error -ErrorObject $ex
+                $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+                $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+            }
+            else {
+                $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+                $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+            }
+            
+            # Check if the error is because user or department doesn't exist (already revoked)
+            if ($auditMessage -like "*Can't find user with code*" -or $auditMessage -like "*department with code*") {
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Action  = 'RevokePermission'
+                        Message = "Skipped revoking manager department [$($permission.Value)] for user [$($actionContext.References.Account)]. Reason: User or department no longer exist."
+                        IsError = $false
+                    })
+            }
+            else {
+                Write-Warning $warningMessage
+                
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Action  = 'RevokePermission'
+                        Message = $auditMessage
+                        IsError = $true
+                    })
+            }
         }
     }
 
@@ -209,7 +288,11 @@ try {
     #             })
     #     }
     # }
-    $outputContext.Success = $true
+
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if (-NOT($outputContext.AuditLogs.IsError -contains $true)) {
+        $outputContext.Success = $true
+    }
 }
 catch {
     $outputContext.Success = $false
@@ -217,13 +300,15 @@ catch {
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        $auditLogMessage = "Could not manage CAPP12 permissions. Error: $($errorObj.FriendlyMessage)"
-        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        $auditLogMessage = "Could not manage CAPP12 permissions. Error: $($_.Exception.Message)"
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
+    Write-Warning $warningMessage
+    
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             Message = $auditLogMessage
             IsError = $true

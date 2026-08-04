@@ -64,7 +64,9 @@ function Resolve-CAPP12Error {
         }
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
-            $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            if ($null -ne $errorDetailsObject.error) {
+                $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            }
         }
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
@@ -79,9 +81,11 @@ try {
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw 'The account reference could not be found'
     }
+
+    $actionMessage = 'creating access token'
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
-    Write-Information "Verifying if a CAPP12 account exists"
+    $actionMessage = 'verifying if a CAPP12 account exists'
     $splatGetUserParams = @{
         Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/users?code=$($actionContext.References.Account)"
         Headers = $headers
@@ -99,6 +103,7 @@ try {
     }
     $outputContext.PreviousData = $correlatedAccount
 
+    $actionMessage = 'processing account data'
     # If the account is inactive, we need to make sure the adfs_login is going to be updated.
     if ($correlatedAccount.active -eq $false) {
         $correlatedAccount | Add-Member -MemberType NoteProperty -Name 'adfs_login' -Value $null -Force
@@ -130,7 +135,7 @@ try {
     # Process
     switch ($lifecycleProcess) {
         'UpdateAccount' {
-            Write-Information "Account property(s) required to update: $($propertiesChanged.Name -join ', ')"
+            $actionMessage = "updating account with accountReference: [$($actionContext.References.Account)]. Properties changed: $($propertiesChanged.Name -join ', ')"
             $body = $actionContext.Data | ConvertTo-Json
 
             $splatWebRequest = @{
@@ -141,7 +146,6 @@ try {
             }
                 
             if (-not($actionContext.DryRun -eq $true)) {
-                Write-Information "Updating CAPP12 account with accountReference: [$($actionContext.References.Account)]"
                 # Make sure to test with special characters and if needed; add utf8 encoding.
                 $null = Invoke-RestMethod @splatWebRequest -Verbose:$false # Always 204
             }
@@ -149,7 +153,6 @@ try {
                 Write-Information "[DryRun] Update CAPP12 account with accountReference: [$($actionContext.References.Account)], will be executed during enforcement"
             }
 
-            $outputContext.Success = $true
             $outputContext.Data = $actionContext.Data
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     Message = "Update account was successful, Account property(s) updated: [$($propertiesChanged.name -join ',')]"
@@ -159,8 +162,6 @@ try {
         }
 
         'NoChanges' {
-            Write-Information "No changes to CAPP12 account with accountReference: [$($actionContext.References.Account)]"
-            $outputContext.Success = $true
             $outputContext.Data = $actionContext.Data
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     Message = "Skipped updating CAPP12 account with AccountReference: [$($actionContext.References.Account)]. Reason: No changes."
@@ -170,8 +171,6 @@ try {
         }
 
         'NotFound' {
-            Write-Information "CAPP12 account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted"
-            $outputContext.Success = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     Message = "CAPP12 account: [$($actionContext.References.Account)] could not be found, indicating that it may have been deleted"
                     IsError = $true
@@ -179,19 +178,29 @@ try {
             break
         }
     }
+
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if (-NOT($outputContext.AuditLogs.IsError -contains $true)) {
+        $outputContext.Success = $true
+    }
 }
 catch {
-    $outputContext.Success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        $auditLogMessage = "Could not update CAPP12 account. Error: $($errorObj.FriendlyMessage)"
-        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"z 
     }
     else {
-        $auditLogMessage = "Could not update CAPP12 account. Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    }
+    Write-Warning $warningMessage
+
+    # If the error is about duplicate email, append $auditLogMessage with the email address we tried to update
+    if ($errorObj.FriendlyMessage -like "*email already exists*") {
+        $auditLogMessage += ". Email address that was attempted to be updated: [$($actionContext.Data.email)]"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             Message = $auditLogMessage

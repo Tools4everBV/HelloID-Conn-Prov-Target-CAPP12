@@ -66,7 +66,9 @@ function Resolve-CAPP12Error {
         }
         try {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
-            $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            if ($null -ne $errorDetailsObject.error) {
+                $httpErrorObj.FriendlyMessage = $errorDetailsObject.error
+            }
         }
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
@@ -77,11 +79,12 @@ function Resolve-CAPP12Error {
 #endregion
 
 try {
-    Write-Information "Creating [$($resourceContext.SourceData.Count)] positions"
-    $outputContext.Success = $true
+    Write-Information "Processing [$(($resourceContext.SourceData | Measure-Object).Count)] position resources"
 
+    $actionMessage = 'creating access token'
     $headers = Get-Capp12AuthorizationTokenAndCreateHeaders
 
+    $actionMessage = 'retrieving existing positions'
     $getPositionsSplat = @{
         Uri     = "$($actionContext.Configuration.BaseUrl)/api/v1/positions"
         Headers = $headers
@@ -89,6 +92,7 @@ try {
     }
     $existingPositions = Invoke-RestMethod @getPositionsSplat | ConvertFrom-Csv -Delimiter ';'
     
+    $actionMessage = 'processing position resources'
     foreach ($resource in $resourceContext.SourceData) {
         try {
             $existingPosition = $existingPositions | Where-Object { $_.code -eq $resource.ExternalId }
@@ -108,6 +112,8 @@ try {
 
             switch ($action) {
                 { $_ -in @('CreateResource', 'UpdateResource') } {
+                    $actionMessage = "$action position [$($resource.ExternalId)]"
+                    
                     $body = [PSCustomObject]@{
                         code  = $resource.ExternalId
                         title = $resource.Name
@@ -142,23 +148,30 @@ try {
             }
         }
         catch {
-            $outputContext.Success = $false
             $ex = $PSItem
             if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
                 $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
                 $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-                $auditLogMessage = "Could not create or update CAPP12 position. Error: $($errorObj.FriendlyMessage)"
-                Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+                $auditLogMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+                $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
             }
             else {
-                $auditLogMessage = "Could not create or update CAPP12 position. Error: $($ex.Exception.Message)"
-                Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+                $auditLogMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+                $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
             }
+            Write-Warning $warningMessage
+            
             $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Action  = $action
                     Message = $auditLogMessage
                     IsError = $true
                 })
         }
+    }
+
+    # Check if auditLogs contains errors, if no errors are found, set success to true
+    if (-NOT($outputContext.AuditLogs.IsError -contains $true)) {
+        $outputContext.Success = $true
     }
 }
 catch {
@@ -167,13 +180,15 @@ catch {
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-CAPP12Error -ErrorObject $ex
-        $auditLogMessage = "Could not create or update CAPP12 position. Error: $($errorObj.FriendlyMessage)"
-        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
-        $auditLogMessage = "Could not create or update CAPP12 position. Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $auditLogMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
+    Write-Warning $warningMessage
+    
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             Message = $auditLogMessage
             IsError = $true
